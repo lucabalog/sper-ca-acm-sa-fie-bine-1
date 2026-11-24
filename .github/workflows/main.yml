@@ -17,12 +17,12 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
-          node-version: 22
+          node-version: '24'
 
       - name: Install dependencies
         run: npm install
@@ -44,15 +44,12 @@ jobs:
 
       - name: Add and sync Capacitor iOS project
         run: |
-          npm install --no-save @capacitor/core@latest @capacitor/cli@latest @capacitor/ios@latest
+          npm install --no-save @capacitor/core@^7 @capacitor/cli@^7 @capacitor/ios@^7
           if [ ! -d "ios" ]; then
             npx cap add ios
           fi
           npx cap sync ios
-      - name: Fix deployment target
-        run: |
-          T=$(grep deployment_target node_modules/@capacitor/ios/Capacitor.podspec | grep -oE '[0-9]+\.[0-9]+' | head -1)
-          sed -i '' "s/platform :ios, '.*'/platform :ios, '$T'/" ios/App/Podfile
+
       - name: Configure iOS Info.plist, WidgetKit extension & AppIcon
         run: |
           if [ -f "ios-widget/setup-ios-widget.rb" ]; then
@@ -119,7 +116,7 @@ jobs:
           zip -r -y Notifye-unsigned.ipa Payload
 
       - name: Upload Notifye-unsigned.ipa artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: Notifye-iOS-IPA
           path: build/ipa/Notifye-unsigned.ipa

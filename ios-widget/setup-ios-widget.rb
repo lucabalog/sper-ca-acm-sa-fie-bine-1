@@ -64,6 +64,7 @@ unless widget_target.source_build_phase.files_references.include?(swift_ref)
 end
 
 widget_target.build_configurations.each do |cfg|
+  cfg.build_settings['PRODUCT_NAME'] = '$(TARGET_NAME)'
   cfg.build_settings['PRODUCT_BUNDLE_IDENTIFIER'] = 'com.notifye.app.widgets'
   cfg.build_settings['INFOPLIST_FILE'] = 'NotifyeWidgets/Info.plist'
   cfg.build_settings['CODE_SIGN_ENTITLEMENTS'] = 'NotifyeWidgets/NotifyeWidgets.entitlements'

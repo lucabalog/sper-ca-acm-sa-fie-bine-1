@@ -8,7 +8,7 @@ echo "2/5 Building Notifye web bundle..."
 npm run build
 
 echo "3/5 Setting up Capacitor iOS project..."
-npm install --no-save @capacitor/core @capacitor/cli @capacitor/ios
+npm install --no-save @capacitor/core@^7 @capacitor/cli@^7 @capacitor/ios@^7
 if [ ! -d "ios" ]; then
   npx cap add ios
 fi
