@@ -1,15 +1,14 @@
 import { initializeApp } from 'firebase/app';
+import { Capacitor } from '@capacitor/core';
 import {
   browserLocalPersistence,
   getAuth,
-  GoogleAuthProvider,
   indexedDBLocalPersistence,
   initializeAuth,
 } from 'firebase/auth';
 import { doc, getDocFromServer, getFirestore } from 'firebase/firestore';
 import { getToken, isSupported, getMessaging, onMessage, type MessagePayload } from 'firebase/messaging';
 import firebaseConfig from '../firebase-applet-config.json';
-import { isNativeApp } from './utils/nativeAuth';
 
 const app = initializeApp(firebaseConfig);
 
@@ -17,15 +16,13 @@ export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
 // In the Capacitor iOS wrapper (WKWebView), getAuth() registers the popup/redirect resolver,
 // which loads a hidden auth iframe from authDomain on startup. That iframe never finishes
 // under capacitor://localhost, so onAuthStateChanged never fires and the app spins forever.
-// On native, initialize auth without any popup/redirect resolver; sign-in uses the native
-// Google Sign-In plugin instead (see utils/nativeAuth.ts).
-export const auth = isNativeApp()
+// On native, initialize auth without any popup/redirect resolver. The app signs in
+// anonymously, so no resolver is needed.
+export const auth = Capacitor.isNativePlatform()
   ? initializeAuth(app, {
       persistence: [indexedDBLocalPersistence, browserLocalPersistence],
     })
   : getAuth(app);
-export const googleProvider = new GoogleAuthProvider();
-googleProvider.setCustomParameters({ prompt: 'select_account' });
 
 export enum OperationType {
   CREATE = 'create',

@@ -9,13 +9,5 @@
     "scrollEnabled": true,
     "backgroundColor": "#0B0B0F",
     "preferredContentMode": "mobile"
-  },
-  "plugins": {
-    "FirebaseAuthentication": {
-      "skipNativeAuth": true,
-      "providers": [
-        "google.com"
-      ]
-    }
   }
 }

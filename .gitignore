@@ -2,4 +2,3 @@ node_modules/
 dist/
 ios/
 build/
-GoogleService-Info.plist

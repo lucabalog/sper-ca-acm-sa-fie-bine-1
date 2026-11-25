@@ -2,7 +2,6 @@ import React, { useEffect, useRef, useState } from 'react';
 import {
   Bell,
   LayoutGrid,
-  LogOut,
   Palette,
   Smartphone,
   Unlink,
@@ -35,7 +34,6 @@ interface PairedStudioProps {
   onSendAttentionPing: () => Promise<void>;
   onSendUrgentAttentionPing: () => Promise<void>;
   onUnpair: () => Promise<void>;
-  onSignOut: () => Promise<void>;
   incomingAlert: PingDoc | null;
   onDismissAlert: () => void;
   sendingPing: boolean;
@@ -79,7 +77,6 @@ export const PairedStudio: React.FC<PairedStudioProps> = ({
   onSendAttentionPing,
   onSendUrgentAttentionPing,
   onUnpair,
-  onSignOut,
   incomingAlert,
   onDismissAlert,
   sendingPing,
@@ -320,15 +317,6 @@ export const PairedStudio: React.FC<PairedStudioProps> = ({
                   <Unlink className="w-4 h-4" />
                 </button>
               )}
-              <button
-                type="button"
-                onClick={() => void onSignOut()}
-                aria-label="Sign out"
-                title="Sign out"
-                className="min-h-[40px] min-w-[40px] rounded-lg text-zinc-400 hover:text-zinc-100 hover:bg-white/[0.06] flex items-center justify-center transition-colors cursor-pointer"
-              >
-                <LogOut className="w-4 h-4" />
-              </button>
             </div>
           </div>
         </header>

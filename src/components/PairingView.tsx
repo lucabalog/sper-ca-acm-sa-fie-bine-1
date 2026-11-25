@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Check, Copy, Link2, LogOut, Pencil, RefreshCw, Smartphone, X } from 'lucide-react';
+import { Check, Copy, Link2, Pencil, RefreshCw, Smartphone, X } from 'lucide-react';
 import type { PairDoc, UserProfile } from '../types';
 
 interface PairingViewProps {
@@ -12,7 +12,6 @@ interface PairingViewProps {
   onUpdateName: (name: string) => Promise<void>;
   onBypassPairing: () => void;
   onOpenIpaExport: () => void;
-  onSignOut: () => Promise<void>;
   busy: boolean;
   error: string | null;
 }
@@ -27,7 +26,6 @@ export const PairingView: React.FC<PairingViewProps> = ({
   onUpdateName,
   onBypassPairing,
   onOpenIpaExport,
-  onSignOut,
   busy,
   error,
 }) => {
@@ -84,15 +82,6 @@ export const PairingView: React.FC<PairingViewProps> = ({
           >
             <Smartphone className="w-3.5 h-3.5 text-amber-400 shrink-0" />
             <span>iOS .ipa</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => void onSignOut()}
-            className="min-h-[40px] min-w-[40px] px-2.5 rounded-lg text-xs font-medium text-zinc-400 hover:text-zinc-100 hover:bg-white/[0.06] flex items-center justify-center gap-1.5 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
-            title="Sign out"
-          >
-            <LogOut className="w-4 h-4 shrink-0" />
-            <span className="hidden sm:inline">Sign out</span>
           </button>
         </div>
       </header>

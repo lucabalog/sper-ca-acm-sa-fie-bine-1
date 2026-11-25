@@ -1,20 +1,16 @@
 import React, { useState } from 'react';
-import { ArrowRight, LogOut, Sparkles, X } from 'lucide-react';
+import { ArrowRight, Sparkles, X } from 'lucide-react';
 import { motion, useReducedMotion } from 'motion/react';
 import type { UserProfile } from '../types';
 
 interface NameSetupViewProps {
   profile: UserProfile;
-  email?: string | null;
   onSaveName: (name: string) => Promise<void>;
-  onSignOut: () => Promise<void>;
 }
 
 export const NameSetupView: React.FC<NameSetupViewProps> = ({
   profile,
-  email,
   onSaveName,
-  onSignOut,
 }) => {
   const [name, setName] = useState(profile.displayName || '');
   const [saving, setSaving] = useState(false);
@@ -63,15 +59,6 @@ export const NameSetupView: React.FC<NameSetupViewProps> = ({
         <span className="font-display text-lg font-medium tracking-tight text-zinc-100 whitespace-nowrap shrink-0">
           Notifye
         </span>
-        <button
-          type="button"
-          onClick={() => void onSignOut()}
-          className="min-h-[40px] min-w-[40px] px-2.5 rounded-lg text-xs font-medium text-zinc-400 hover:text-zinc-100 hover:bg-white/[0.06] flex items-center justify-center gap-1.5 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
-          title="Sign out"
-        >
-          <LogOut className="w-4 h-4 shrink-0" />
-          <span className="hidden sm:inline">Sign out</span>
-        </button>
       </header>
 
       <main className="relative z-10 flex-1 w-full max-w-5xl mx-auto px-5 py-8 flex items-center justify-center">
@@ -84,7 +71,7 @@ export const NameSetupView: React.FC<NameSetupViewProps> = ({
           <div className="space-y-2">
             <div className="inline-flex items-center gap-1.5 text-xs font-medium text-amber-400/90">
               <Sparkles className="w-3.5 h-3.5 shrink-0" />
-              <span>{email || 'Google account connected'}</span>
+              <span>No account needed</span>
             </div>
             <h1 className="font-display text-2xl sm:text-3xl font-medium text-zinc-50 tracking-tight">
               Choose your name

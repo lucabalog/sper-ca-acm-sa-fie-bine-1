@@ -1,13 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import {
-  browserPopupRedirectResolver,
-  GoogleAuthProvider,
-  onAuthStateChanged,
-  signInWithCredential,
-  signInWithPopup,
-  signOut,
-  type User,
-} from 'firebase/auth';
+import { onAuthStateChanged, signInAnonymously, type User } from 'firebase/auth';
 import {
   collection,
   deleteDoc,
@@ -24,13 +16,11 @@ import {
 import {
   auth,
   db,
-  googleProvider,
   handleFirestoreError,
   OperationType,
   showPartnerSystemNotification,
   subscribeForegroundFcm,
 } from './firebase';
-import { hasNativeGoogleSignIn, nativeGoogleSignIn, nativeSignOut } from './utils/nativeAuth';
 import type {
   AspectRatioOption,
   AutoDeleteDuration,
@@ -41,7 +31,6 @@ import type {
   StudioThemePrefs,
   UserProfile,
 } from './types';
-import { AuthView } from './components/AuthView';
 import { CustomizeSheet } from './components/CustomizeSheet';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { MobileExportSheet } from './components/MobileExportSheet';
@@ -55,7 +44,7 @@ import { WidgetStandaloneView } from './components/WidgetStandaloneView';
 import { playWarmChime } from './utils/chime';
 import { triggerHaptic } from './utils/haptics';
 import { loadThemePrefs, resolveAmbientPalette, saveThemePrefs } from './utils/themeColors';
-import { clearNativeWidgetState, syncNativeWidgetState } from './utils/widgetBridge';
+import { syncNativeWidgetState } from './utils/widgetBridge';
 
 const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 
@@ -108,8 +97,8 @@ function TetherWorkspace() {
   const [testPings, setTestPings] = useState<PingDoc[]>([]);
   const [testPingCount, setTestPingCount] = useState(0);
 
-  const [authBusy, setAuthBusy] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
+  const [authAttempt, setAuthAttempt] = useState(0);
   const [pairBusy, setPairBusy] = useState(false);
   const [pairError, setPairError] = useState<string | null>(null);
   const [sendingPing, setSendingPing] = useState(false);
@@ -118,7 +107,6 @@ function TetherWorkspace() {
   const [incomingAlert, setIncomingAlert] = useState<PingDoc | null>(null);
 
   const [nameConfirmed, setNameConfirmed] = useState(true);
-  const [justSignedIn, setJustSignedIn] = useState(false);
 
   const [showCustomizeSheet, setShowCustomizeSheet] = useState(false);
   const [showNotificationsSheet, setShowNotificationsSheet] = useState(false);
@@ -181,19 +169,35 @@ function TetherWorkspace() {
   // 1. Auth State & User Profile Initialization
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (user) => {
-      setFbUser(user);
-      setAuthReady(true);
-
       if (!user) {
+        // No account needed: give this device an anonymous Firebase identity.
+        // It persists across launches, so the device keeps its name and pair.
+        setFbUser(null);
         setProfile(null);
         setPair(null);
         setPings([]);
-        setNameConfirmed(true);
-        setJustSignedIn(false);
         initialPingsLoadedRef.current = false;
         seenPingIdsRef.current.clear();
+        try {
+          setAuthError(null);
+          await signInAnonymously(auth);
+        } catch (err) {
+          const code = (err as { code?: string })?.code;
+          setAuthError(
+            code === 'auth/admin-restricted-operation' || code === 'auth/operation-not-allowed'
+              ? 'Anonymous sign-in is turned off for this Firebase project. Enable it in Firebase console → Authentication → Sign-in method → Anonymous.'
+              : err instanceof Error
+                ? err.message
+                : 'Could not connect.'
+          );
+          setAuthReady(true);
+        }
         return;
       }
+
+      setAuthError(null);
+      setFbUser(user);
+      setAuthReady(true);
 
       let chosen = false;
       try {
@@ -229,16 +233,24 @@ function TetherWorkspace() {
           await batch.commit();
         }
       } catch (err) {
+        setAuthError(
+          `Could not set up this device: ${err instanceof Error ? err.message : String(err)}`
+        );
         handleFirestoreError(err, OperationType.WRITE, userPath);
       }
     });
     // Safety net: never sit on the loading spinner forever if auth fails to initialize.
-    const authTimeout = window.setTimeout(() => setAuthReady(true), 8000);
+    const authTimeout = window.setTimeout(() => {
+      if (!auth.currentUser) {
+        setAuthError('Connecting is taking longer than expected. Check your internet connection.');
+        setAuthReady(true);
+      }
+    }, 15000);
     return () => {
       window.clearTimeout(authTimeout);
       unsub();
     };
-  }, []);
+  }, [authAttempt]);
 
   // 2. Listen to User Profile & Private Preferences
   useEffect(() => {
@@ -503,39 +515,10 @@ function TetherWorkspace() {
     return () => cleanup();
   }, [soundEnabled]);
 
-  const handleSignIn = async () => {
-    setAuthBusy(true);
+  const retryConnect = () => {
+    setAuthReady(false);
     setAuthError(null);
-    try {
-      let cred;
-      if (hasNativeGoogleSignIn()) {
-        const { idToken, accessToken } = await nativeGoogleSignIn();
-        cred = await signInWithCredential(auth, GoogleAuthProvider.credential(idToken, accessToken));
-      } else {
-        // On iOS, auth is initialized without a popup resolver (it hangs app startup),
-        // so pass it here; it only loads when the user taps sign-in.
-        cred = await signInWithPopup(auth, googleProvider, browserPopupRedirectResolver);
-      }
-      try {
-        localStorage.removeItem(`notifye_name_chosen_${cred.user.uid}`);
-      } catch {
-        // ignore
-      }
-      setNameConfirmed(false);
-      setJustSignedIn(true);
-    } catch (err) {
-      setAuthError(err instanceof Error ? err.message : 'Google Sign-In failed.');
-    } finally {
-      setAuthBusy(false);
-    }
-  };
-
-  const handleSignOut = async () => {
-    setJustSignedIn(false);
-    exitTestMode();
-    void clearNativeWidgetState();
-    await nativeSignOut();
-    await signOut(auth);
+    setAuthAttempt((n) => n + 1);
   };
 
   const handleUpdateDisplayName = async (rawName: string) => {
@@ -553,7 +536,6 @@ function TetherWorkspace() {
         // ignore
       }
       setNameConfirmed(true);
-      setJustSignedIn(false);
     } catch (err) {
       handleFirestoreError(err, OperationType.UPDATE, `users/${fbUser.uid}`);
       throw err;
@@ -946,10 +928,19 @@ function TetherWorkspace() {
     );
   }
 
-  if (!fbUser) {
+  if (!fbUser || (!profile && authError)) {
     return (
       <>
-        <AuthView onSignIn={handleSignIn} error={authError} busy={authBusy} />
+        <div className="min-h-screen bg-[#0B0B0F] flex flex-col items-center justify-center gap-4 px-6 text-center">
+          <p className="text-sm text-zinc-300 max-w-xs">{authError || 'Could not connect.'}</p>
+          <button
+            type="button"
+            onClick={retryConnect}
+            className="min-h-[44px] px-5 rounded-xl bg-amber-500 text-zinc-950 text-sm font-semibold cursor-pointer"
+          >
+            Try again
+          </button>
+        </div>
         <OfflineIndicator />
       </>
     );
@@ -964,16 +955,14 @@ function TetherWorkspace() {
   }
 
   const isActivePair = Boolean(pair && pair.status === 'active');
-  const needsNameStep = justSignedIn || (!nameConfirmed && !isActivePair);
+  const needsNameStep = !nameConfirmed && !isActivePair;
 
   if (needsNameStep) {
     return (
       <>
         <NameSetupView
           profile={profile}
-          email={fbUser.email}
           onSaveName={handleUpdateDisplayName}
-          onSignOut={handleSignOut}
         />
         <OfflineIndicator />
       </>
@@ -1075,7 +1064,6 @@ function TetherWorkspace() {
             })
           }
           onUnpair={handleUnpair}
-          onSignOut={handleSignOut}
           incomingAlert={incomingAlert}
           onDismissAlert={() => setIncomingAlert(null)}
           sendingPing={sendingPing}
@@ -1097,7 +1085,6 @@ function TetherWorkspace() {
           onUpdateName={handleUpdateDisplayName}
           onBypassPairing={enterTestMode}
           onOpenIpaExport={() => setShowIpaExportSheet(true)}
-          onSignOut={handleSignOut}
           busy={pairBusy}
           error={pairError}
         />
