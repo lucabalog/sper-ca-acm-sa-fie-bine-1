@@ -120,6 +120,11 @@ export default defineConfig(() => {
         },
       },
     ],
+    build: {
+      // The iOS app (Capacitor 7) supports iOS 14+, whose WKWebView matches Safari 14.
+      // Vite's default target is Safari/iOS 16.4, which would emit syntax older iOS can't parse.
+      target: ['es2020', 'safari14', 'ios14'],
+    },
     resolve: {
       alias: {
         '@': path.resolve(__dirname, '.'),

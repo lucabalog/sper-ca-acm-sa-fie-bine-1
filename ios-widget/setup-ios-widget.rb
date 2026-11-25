@@ -33,7 +33,9 @@ end
 
 app_target.build_configurations.each do |cfg|
   cfg.build_settings['CODE_SIGN_ENTITLEMENTS'] = 'App/App.entitlements'
-  cfg.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '17.0'
+  # iOS 14 is the lowest version Capacitor 7 supports. The widget extension below stays
+  # at iOS 17 (interactive widgets); on older iOS the app runs without the widget.
+  cfg.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '14.0'
 end
 
 # Create NotifyeWidgets extension target

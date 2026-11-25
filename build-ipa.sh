@@ -8,7 +8,13 @@ echo "2/5 Building Notifye web bundle..."
 npm run build
 
 echo "3/5 Setting up Capacitor iOS project..."
-npm install --no-save @capacitor/core@^7 @capacitor/cli@^7 @capacitor/ios@^7
+if [ -f "GoogleService-Info.plist" ]; then
+  # Adds the native Google Sign-In plugin to package.json so `cap sync` registers it.
+  npm install --legacy-peer-deps @capacitor/cli@^7 @capacitor/ios@^7 @capacitor-firebase/authentication@^7.5.0
+else
+  echo "Warning: GoogleService-Info.plist not found at repo root; building without native Google Sign-In."
+  npm install --no-save @capacitor/cli@^7 @capacitor/ios@^7
+fi
 if [ ! -d "ios" ]; then
   npx cap add ios
 fi
@@ -53,6 +59,10 @@ if [ -f "public/pwa-512x512.png" ] && [ -d "$ICON_DEST" ]; then
   }
 }
 EOF
+fi
+
+if [ -f "GoogleService-Info.plist" ]; then
+  ruby ios-native/setup-google-signin.rb
 fi
 
 echo "5/5 Archiving & packaging Notifye-unsigned.ipa..."

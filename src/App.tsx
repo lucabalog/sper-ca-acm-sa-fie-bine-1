@@ -1,5 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { onAuthStateChanged, signInWithPopup, signOut, type User } from 'firebase/auth';
+import {
+  browserPopupRedirectResolver,
+  GoogleAuthProvider,
+  onAuthStateChanged,
+  signInWithCredential,
+  signInWithPopup,
+  signOut,
+  type User,
+} from 'firebase/auth';
 import {
   collection,
   deleteDoc,
@@ -22,6 +30,7 @@ import {
   showPartnerSystemNotification,
   subscribeForegroundFcm,
 } from './firebase';
+import { hasNativeGoogleSignIn, nativeGoogleSignIn, nativeSignOut } from './utils/nativeAuth';
 import type {
   AspectRatioOption,
   AutoDeleteDuration,
@@ -498,7 +507,15 @@ function TetherWorkspace() {
     setAuthBusy(true);
     setAuthError(null);
     try {
-      const cred = await signInWithPopup(auth, googleProvider);
+      let cred;
+      if (hasNativeGoogleSignIn()) {
+        const { idToken, accessToken } = await nativeGoogleSignIn();
+        cred = await signInWithCredential(auth, GoogleAuthProvider.credential(idToken, accessToken));
+      } else {
+        // On iOS, auth is initialized without a popup resolver (it hangs app startup),
+        // so pass it here; it only loads when the user taps sign-in.
+        cred = await signInWithPopup(auth, googleProvider, browserPopupRedirectResolver);
+      }
       try {
         localStorage.removeItem(`notifye_name_chosen_${cred.user.uid}`);
       } catch {
@@ -517,6 +534,7 @@ function TetherWorkspace() {
     setJustSignedIn(false);
     exitTestMode();
     void clearNativeWidgetState();
+    await nativeSignOut();
     await signOut(auth);
   };
 
