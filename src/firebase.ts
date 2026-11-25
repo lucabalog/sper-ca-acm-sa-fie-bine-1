@@ -1,5 +1,12 @@
 import { initializeApp } from 'firebase/app';
-import { getAuth, GoogleAuthProvider } from 'firebase/auth';
+import {
+  browserLocalPersistence,
+  browserPopupRedirectResolver,
+  getAuth,
+  GoogleAuthProvider,
+  indexedDBLocalPersistence,
+  initializeAuth,
+} from 'firebase/auth';
 import { doc, getDocFromServer, getFirestore } from 'firebase/firestore';
 import { getToken, isSupported, getMessaging, onMessage, type MessagePayload } from 'firebase/messaging';
 import firebaseConfig from '../firebase-applet-config.json';
@@ -7,7 +14,19 @@ import firebaseConfig from '../firebase-applet-config.json';
 const app = initializeApp(firebaseConfig);
 
 export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
-export const auth = getAuth(app);
+// In the Capacitor iOS wrapper (WKWebView), getAuth() loads a cross-origin auth iframe that
+// can hang, so onAuthStateChanged never fires and the app stays on its loading spinner.
+// Initialize auth with explicit persistence and no iframe-based resolver instead.
+const isNativeApp =
+  typeof window !== 'undefined' &&
+  Boolean((window as unknown as { Capacitor?: { isNativePlatform?: () => boolean } }).Capacitor?.isNativePlatform?.());
+
+export const auth = isNativeApp
+  ? initializeAuth(app, {
+      persistence: [indexedDBLocalPersistence, browserLocalPersistence],
+      popupRedirectResolver: browserPopupRedirectResolver,
+    })
+  : getAuth(app);
 export const googleProvider = new GoogleAuthProvider();
 googleProvider.setCustomParameters({ prompt: 'select_account' });
 

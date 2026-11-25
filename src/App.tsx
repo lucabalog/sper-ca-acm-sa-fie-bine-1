@@ -223,7 +223,12 @@ function TetherWorkspace() {
         handleFirestoreError(err, OperationType.WRITE, userPath);
       }
     });
-    return () => unsub();
+    // Safety net: never sit on the loading spinner forever if auth fails to initialize.
+    const authTimeout = window.setTimeout(() => setAuthReady(true), 8000);
+    return () => {
+      window.clearTimeout(authTimeout);
+      unsub();
+    };
   }, []);
 
   // 2. Listen to User Profile & Private Preferences
