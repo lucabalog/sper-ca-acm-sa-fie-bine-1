@@ -1,0 +1,35 @@
+name: Attach existing IPA to a release
+
+# Use when the macOS release build can't get a runner: copies the IPA from an earlier
+# successful build run onto a release. Runs on Linux, which starts immediately.
+on:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: 'ID of a successful "Build iOS IPA and Android APK" run'
+        required: true
+      tag:
+        description: 'Release tag, e.g. v1.5.0'
+        required: true
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  attach:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download IPA artifact from the earlier run
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ inputs.run_id }}
+        run: gh run download "$RUN_ID" --repo "$GITHUB_REPOSITORY" --name Notifye-iOS-IPA --dir ipa
+
+      - name: Attach to release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          cp ipa/Notifye-unsigned.ipa "Notifye-${TAG}-unsigned.ipa"
+          gh release upload "$TAG" "Notifye-${TAG}-unsigned.ipa" --clobber --repo "$GITHUB_REPOSITORY"

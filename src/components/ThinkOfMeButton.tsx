@@ -42,6 +42,7 @@ const FINE_POINTER =
   window.matchMedia('(hover: hover) and (pointer: fine)').matches;
 const TOUCH_PRESS_TRANSITION = { type: 'tween' as const, duration: 0.12, ease: 'easeOut' as const };
 const SPARK_ANGLES = Array.from({ length: 12 }, (_, i) => (i * 30 * Math.PI) / 180);
+const TOUCH_SPARK_ANGLES = Array.from({ length: 8 }, (_, i) => (i * 45 * Math.PI) / 180);
 
 export const ThinkOfMeButton: React.FC<ThinkOfMeButtonProps> = ({
   label,
@@ -136,12 +137,22 @@ export const ThinkOfMeButton: React.FC<ThinkOfMeButtonProps> = ({
     spotY.set(50);
   }, [pointerX, pointerY, spotX, spotY]);
 
+  // Replaying the word wave remounts every word; on rapid taps only replay it every 350 ms.
+  const lastWaveAtRef = useRef(0);
+  const bumpClickMotion = useCallback(() => {
+    const now = Date.now();
+    if (now - lastWaveAtRef.current < 350) return;
+    lastWaveAtRef.current = now;
+    setClickMotionCount((c) => c + 1);
+  }, []);
+
   const triggerTouchAnimation = useCallback(
     (overrideStyle?: TouchAnimationStyle | 'urgent', originX = 0, originY = 0) => {
       const id = Date.now() + Math.random();
       const style = overrideStyle ?? animationStyle;
-      setBursts((prev) => [...prev.slice(-3), { id, style, originX, originY }]);
-      setTouchPulseKey((k) => k + 1);
+      // Touch devices keep at most 2 bursts alive so rapid taps don't stack dozens of layers.
+      setBursts((prev) => [...prev.slice(FINE_POINTER ? -3 : -1), { id, style, originX, originY }]);
+      if (FINE_POINTER) setTouchPulseKey((k) => k + 1);
       window.setTimeout(() => {
         setBursts((prev) => prev.filter((b) => b.id !== id));
       }, 920);
@@ -153,7 +164,7 @@ export const ThinkOfMeButton: React.FC<ThinkOfMeButtonProps> = ({
     if (externalBurstKey > 0) {
       triggerHaptic('tap');
       triggerTouchAnimation();
-      setClickMotionCount((c) => c + 1);
+      bumpClickMotion();
     }
   }, [externalBurstKey, triggerTouchAnimation]);
 
@@ -185,7 +196,7 @@ export const ThinkOfMeButton: React.FC<ThinkOfMeButtonProps> = ({
         }
         triggerHaptic('urgentSend');
         triggerTouchAnimation('urgent', 0, 0);
-        setClickMotionCount((c) => c + 1);
+        bumpClickMotion();
         void onUrgentPress();
       }, HOLD_DURATION_MS);
     }
@@ -207,7 +218,7 @@ export const ThinkOfMeButton: React.FC<ThinkOfMeButtonProps> = ({
 
     if (!urgentTriggeredRef.current) {
       triggerHaptic('tap');
-      setClickMotionCount((c) => c + 1);
+      bumpClickMotion();
       void onPress();
     }
   };
@@ -230,7 +241,7 @@ export const ThinkOfMeButton: React.FC<ThinkOfMeButtonProps> = ({
     }
     triggerHaptic('tap');
     triggerTouchAnimation();
-    setClickMotionCount((c) => c + 1);
+    bumpClickMotion();
     void onPress();
   };
 
@@ -545,7 +556,7 @@ export const ThinkOfMeButton: React.FC<ThinkOfMeButtonProps> = ({
                     className={`absolute ${dimensionClass} ${radiusClass} border-2 pointer-events-none`}
                     style={{
                       borderColor: color,
-                      boxShadow: `0 0 26px ${hexToRgba(color, 0.45)}`,
+                      boxShadow: FINE_POINTER ? `0 0 26px ${hexToRgba(color, 0.45)}` : undefined,
                     }}
                   />
                 ))}
@@ -583,7 +594,7 @@ export const ThinkOfMeButton: React.FC<ThinkOfMeButtonProps> = ({
                     className={`absolute ${dimensionClass} ${radiusClass} border-[3px] pointer-events-none`}
                     style={{
                       borderColor: color,
-                      boxShadow: `0 0 28px ${hexToRgba(color, 0.5)}`,
+                      boxShadow: FINE_POINTER ? `0 0 28px ${hexToRgba(color, 0.5)}` : undefined,
                     }}
                   />
                 ))}
@@ -597,7 +608,7 @@ export const ThinkOfMeButton: React.FC<ThinkOfMeButtonProps> = ({
                     className={`absolute ${dimensionClass} ${radiusClass} border-2 pointer-events-none`}
                     style={{ borderColor: color }}
                   />
-                  {SPARK_ANGLES.map((angle, idx) => {
+                  {(FINE_POINTER ? SPARK_ANGLES : TOUCH_SPARK_ANGLES).map((angle, idx) => {
                     const startDist = baseRadiusPx * 0.96;
                     const endDist = baseRadiusPx + 64;
                     const sx = burst.originX * 0.2 + Math.cos(angle) * startDist;
@@ -632,7 +643,7 @@ export const ThinkOfMeButton: React.FC<ThinkOfMeButtonProps> = ({
                         className="absolute w-3.5 h-1.5 rounded-full pointer-events-none"
                         style={{
                           backgroundColor: idx % 2 === 0 ? topTint : color,
-                          boxShadow: `0 0 14px ${hexToRgba(color, 0.95)}`,
+                          boxShadow: FINE_POINTER ? `0 0 14px ${hexToRgba(color, 0.95)}` : undefined,
                         }}
                       />
                     );

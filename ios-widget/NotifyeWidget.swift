@@ -6,231 +6,6 @@ import WidgetKit
 
 // Storage keys and App Group lookup live in NotifyeShared.swift (compiled into both targets).
 
-struct NotifyeWidgetState: Codable {
-    var apiKey: String
-    var projectId: String
-    var databaseId: String
-    var refreshToken: String
-    var uid: String
-    var displayName: String
-    var pairId: String
-    var partnerName: String
-    var memberUids: [String]
-    var buttonLabel: String
-    var buttonColorHex: String
-    var backgroundColorHex: String
-    var normalMessage: String
-    var priorityMessage: String
-    var defaultUrgent: Bool
-    // Exact in-app button look (optional so older saved state still decodes)
-    var buttonTopHex: String? = nil
-    var buttonBottomHex: String? = nil
-    var buttonInkHex: String? = nil
-    var buttonShape: String? = nil
-    /// Partner's ntfy topic for notifications while their app is closed ('' / nil if off).
-    var partnerPushTopic: String? = nil
-
-    static let placeholder = NotifyeWidgetState(
-        apiKey: "",
-        projectId: "",
-        databaseId: "(default)",
-        refreshToken: "",
-        uid: "",
-        displayName: "You",
-        pairId: "",
-        partnerName: "Partner",
-        memberUids: [],
-        buttonLabel: "Think of me",
-        buttonColorHex: "#F59E0B",
-        backgroundColorHex: "#0B0B0F",
-        normalMessage: "Your partner wants your attention",
-        priorityMessage: "Your partner really needs your attention",
-        defaultUrgent: false
-    )
-
-    var isPaired: Bool {
-        !pairId.isEmpty && memberUids.count == 2 && !refreshToken.isEmpty && !apiKey.isEmpty
-    }
-
-    static func load() -> NotifyeWidgetState? {
-        guard
-            let data = NotifyeShared.defaults?.data(forKey: NotifyeShared.stateKey),
-            let state = try? JSONDecoder().decode(NotifyeWidgetState.self, from: data)
-        else { return nil }
-        return state
-    }
-}
-
-// MARK: - Send intent (runs in the widget process, no app launch)
-
-@available(iOS 17.0, *)
-struct SendNotifyePingIntent: AppIntent {
-    static var title: LocalizedStringResource = "Notify Partner"
-    static var description = IntentDescription("Sends a Notifye notification to your paired partner.")
-    static var openAppWhenRun: Bool = false
-
-    @Parameter(title: "Priority Alert", default: false)
-    var isUrgent: Bool
-
-    init() {
-        self.isUrgent = false
-    }
-
-    init(isUrgent: Bool) {
-        self.isUrgent = isUrgent
-    }
-
-    func perform() async throws -> some IntentResult {
-        let defaults = NotifyeShared.defaults
-        guard let state = NotifyeWidgetState.load(), state.isPaired else {
-            defaults?.set("Open Notifye to pair", forKey: NotifyeShared.lastStatusKey)
-            defaults?.set(Date().timeIntervalSince1970 * 1000.0, forKey: NotifyeShared.lastSentKey)
-            WidgetCenter.shared.reloadAllTimelines()
-            return .result()
-        }
-
-        do {
-            let idToken = try await exchangeRefreshToken(apiKey: state.apiKey, refreshToken: state.refreshToken)
-            try await commitFirestorePing(state: state, idToken: idToken, isUrgent: isUrgent)
-            await sendClosedAppPush(state: state, isUrgent: isUrgent)
-            defaults?.set(
-                isUrgent ? "Priority sent to \(state.partnerName)" : "Sent to \(state.partnerName)",
-                forKey: NotifyeShared.lastStatusKey
-            )
-        } catch {
-            defaults?.set("Couldn't send · open Notifye", forKey: NotifyeShared.lastStatusKey)
-        }
-        defaults?.set(Date().timeIntervalSince1970 * 1000.0, forKey: NotifyeShared.lastSentKey)
-
-        WidgetCenter.shared.reloadAllTimelines()
-        return .result()
-    }
-
-    /// Same as sendClosedAppPush() in src/utils/closedAppPush.ts: publish to the partner's ntfy topic.
-    private func sendClosedAppPush(state: NotifyeWidgetState, isUrgent: Bool) async {
-        guard
-            let topic = state.partnerPushTopic,
-            topic.range(of: "^notifye-[a-z0-9]{24}$", options: .regularExpression) != nil,
-            let url = URL(string: "https://ntfy.sh")
-        else { return }
-        let body: [String: Any] = [
-            "topic": topic,
-            "title": isUrgent ? "Priority from \(state.displayName)" : state.displayName,
-            "message": isUrgent ? state.priorityMessage : state.normalMessage,
-            "priority": isUrgent ? 5 : 4,
-            "tags": [isUrgent ? "rotating_light" : "bell"],
-        ]
-        var req = URLRequest(url: url)
-        req.httpMethod = "POST"
-        req.timeoutInterval = 10
-        req.httpBody = try? JSONSerialization.data(withJSONObject: body)
-        _ = try? await URLSession.shared.data(for: req)
-    }
-
-    private func exchangeRefreshToken(apiKey: String, refreshToken: String) async throws -> String {
-        guard let url = URL(string: "https://securetoken.googleapis.com/v1/token?key=\(apiKey)") else {
-            throw URLError(.badURL)
-        }
-        var req = URLRequest(url: url)
-        req.httpMethod = "POST"
-        req.timeoutInterval = 15
-        req.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
-        var allowed = CharacterSet.alphanumerics
-        allowed.insert(charactersIn: "-._~")
-        let encoded = refreshToken.addingPercentEncoding(withAllowedCharacters: allowed) ?? refreshToken
-        req.httpBody = "grant_type=refresh_token&refresh_token=\(encoded)".data(using: .utf8)
-
-        let (respData, resp) = try await URLSession.shared.data(for: req)
-        guard let http = resp as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
-            throw URLError(.userAuthenticationRequired)
-        }
-        guard
-            let json = try JSONSerialization.jsonObject(with: respData) as? [String: Any],
-            let idToken = json["id_token"] as? String
-        else {
-            throw URLError(.cannotParseResponse)
-        }
-        return idToken
-    }
-
-    private func commitFirestorePing(state: NotifyeWidgetState, idToken: String, isUrgent: Bool) async throws {
-        let dbId = state.databaseId.isEmpty ? "(default)" : state.databaseId
-        guard let url = URL(
-            string: "https://firestore.googleapis.com/v1/projects/\(state.projectId)/databases/\(dbId)/documents:commit"
-        ) else {
-            throw URLError(.badURL)
-        }
-
-        let nowMs = Int64(Date().timeIntervalSince1970 * 1000.0)
-        let rev = String(format: "%013lld", max(0, 9999999999999 - nowMs))
-        let suffix = String(state.uid.prefix(6)).filter { $0.isLetter || $0.isNumber }
-        let rand = String(UUID().uuidString.prefix(4)).lowercased()
-        let pingId = "\(rev)_\(suffix.isEmpty ? "wgt" : suffix)_\(rand)"
-
-        let message = isUrgent ? state.priorityMessage : state.normalMessage
-        let kind = isUrgent ? "urgent_attention" : "attention"
-        let baseDocPath = "projects/\(state.projectId)/databases/\(dbId)/documents"
-        let pairDocName = "\(baseDocPath)/pairs/\(state.pairId)"
-        let pingDocName = "\(pairDocName)/pings/\(pingId)"
-
-        let memberArray = state.memberUids.map { ["stringValue": $0] }
-
-        let body: [String: Any] = [
-            "writes": [
-                [
-                    "update": [
-                        "name": pairDocName,
-                        "fields": [
-                            "lastPingByUid": ["stringValue": state.uid],
-                            "lastPingMessage": ["stringValue": message],
-                        ],
-                    ],
-                    "updateMask": [
-                        "fieldPaths": ["lastPingByUid", "lastPingMessage"],
-                    ],
-                    "updateTransforms": [
-                        ["fieldPath": "lastPingAt", "setToServerValue": "REQUEST_TIME"],
-                        ["fieldPath": "updatedAt", "setToServerValue": "REQUEST_TIME"],
-                        ["fieldPath": "pingCount", "increment": ["integerValue": "1"]],
-                    ],
-                ],
-                [
-                    "currentDocument": ["exists": false],
-                    "update": [
-                        "name": pingDocName,
-                        "fields": [
-                            "pingId": ["stringValue": pingId],
-                            "pairId": ["stringValue": state.pairId],
-                            "memberUids": ["arrayValue": ["values": memberArray]],
-                            "senderUid": ["stringValue": state.uid],
-                            "senderName": ["stringValue": state.displayName],
-                            "message": ["stringValue": message],
-                            "kind": ["stringValue": kind],
-                            "momentCardUrl": ["stringValue": ""],
-                            "aspectRatio": ["stringValue": ""],
-                        ],
-                    ],
-                    "updateTransforms": [
-                        ["fieldPath": "createdAt", "setToServerValue": "REQUEST_TIME"],
-                    ],
-                ],
-            ],
-        ]
-
-        var req = URLRequest(url: url)
-        req.httpMethod = "POST"
-        req.timeoutInterval = 15
-        req.setValue("Bearer \(idToken)", forHTTPHeaderField: "Authorization")
-        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        req.httpBody = try JSONSerialization.data(withJSONObject: body)
-
-        let (_, resp) = try await URLSession.shared.data(for: req)
-        guard let http = resp as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
-            throw URLError(.badServerResponse)
-        }
-    }
-}
-
 // MARK: - Timeline
 
 struct NotifyeTimelineEntry: TimelineEntry {
@@ -369,16 +144,11 @@ struct NotifyeWidgetView: View {
         }
     }
 
-    /// Paired: runs the send intent in place. Not paired / no shared state: opens Notifye via
-    /// widgetURL, and the app sends the notification.
-    @ViewBuilder
+    /// Always sends in place; never opens the app. The intent runs in the app process when the
+    /// widget itself can't see the pairing (see NotifyeIntent.swift).
     private func tapToSend<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
-        if entry.isPaired {
-            Button(intent: SendNotifyePingIntent(isUrgent: entry.state.defaultUrgent)) { content() }
-                .buttonStyle(.plain)
-        } else {
-            content()
-        }
+        Button(intent: SendNotifyePingIntent(isUrgent: entry.state.defaultUrgent)) { content() }
+            .buttonStyle(.plain)
     }
 
     // Lock Screen: round
@@ -391,7 +161,6 @@ struct NotifyeWidgetView: View {
             }
         }
         .widgetAccentable()
-        .widgetURL(entry.isPaired ? nil : NotifyeLinks.send(urgent: entry.state.defaultUrgent))
         .containerBackground(.clear, for: .widget)
     }
 
@@ -405,7 +174,7 @@ struct NotifyeWidgetView: View {
                     Text(entry.isPaired ? "Notify \(partner)" : "Notifye")
                         .font(.headline)
                         .lineLimit(1)
-                    Text(entry.showStatus ? entry.lastStatus : (entry.isPaired ? "Tap to send" : "Tap to send via app"))
+                    Text(entry.showStatus ? entry.lastStatus : (entry.isPaired ? "Tap to send" : "Tap to notify"))
                         .font(.caption2)
                         .lineLimit(1)
                         .opacity(0.8)
@@ -414,7 +183,6 @@ struct NotifyeWidgetView: View {
             }
         }
         .widgetAccentable()
-        .widgetURL(entry.isPaired ? nil : NotifyeLinks.send(urgent: entry.state.defaultUrgent))
         .containerBackground(.clear, for: .widget)
     }
 
@@ -432,21 +200,12 @@ struct NotifyeWidgetView: View {
 
             Spacer(minLength: 4)
 
-            if entry.isPaired {
-                Button(intent: SendNotifyePingIntent(isUrgent: entry.state.defaultUrgent)) {
-                    sendCircle(diameter: 64)
-                }
-                .buttonStyle(.plain)
-            } else {
-                // No shared state yet: tapping opens Notifye, which sends the notification.
-                sendCircle(diameter: 64)
-            }
+            tapToSend { sendCircle(diameter: 64) }
 
             Spacer(minLength: 4)
 
-            statusLine(default: entry.isPaired ? entry.state.buttonLabel : "Tap to send via app")
+            statusLine(default: entry.isPaired ? entry.state.buttonLabel : "Tap to notify")
         }
-        .widgetURL(entry.isPaired ? nil : NotifyeLinks.send(urgent: entry.state.defaultUrgent))
         .containerBackground(for: .widget) { palette.background }
     }
 
@@ -460,14 +219,14 @@ struct NotifyeWidgetView: View {
                         Text("Notifye")
                             .font(.system(size: 11, weight: .semibold, design: .rounded))
                             .foregroundStyle(.white.opacity(0.55))
-                        Text(entry.isPaired ? partner : "Not paired")
+                        Text(entry.isPaired ? partner : "Your partner")
                             .font(.system(size: 16, weight: .bold, design: .rounded))
                             .foregroundStyle(.white)
                             .lineLimit(1)
                     }
                 }
                 Spacer(minLength: 0)
-                statusLine(default: entry.isPaired ? "Tap to let them know" : "Opens Notifye to send", alignLeading: true)
+                statusLine(default: entry.isPaired ? "Tap to let them know" : "Tap to notify", alignLeading: true)
             }
 
             Spacer(minLength: 0)
@@ -489,16 +248,10 @@ struct NotifyeWidgetView: View {
                     width: 66,
                     stroke: palette.priority.opacity(0.45)
                 )
-                if entry.isPaired {
-                    Button(intent: SendNotifyePingIntent(isUrgent: false)) { normalTile }
-                        .buttonStyle(.plain)
-                    Button(intent: SendNotifyePingIntent(isUrgent: true)) { priorityTile }
-                        .buttonStyle(.plain)
-                } else {
-                    // No shared state yet: open Notifye, which sends the notification.
-                    Link(destination: NotifyeLinks.send(urgent: false)) { normalTile }
-                    Link(destination: NotifyeLinks.send(urgent: true)) { priorityTile }
-                }
+                Button(intent: SendNotifyePingIntent(isUrgent: false)) { normalTile }
+                    .buttonStyle(.plain)
+                Button(intent: SendNotifyePingIntent(isUrgent: true)) { priorityTile }
+                    .buttonStyle(.plain)
             }
         }
         .containerBackground(for: .widget) { palette.background }
@@ -577,14 +330,6 @@ struct NotifyeQuickButtonWidget: Widget {
 struct NotifyeWidgetBundle: WidgetBundle {
     var body: some Widget {
         NotifyeQuickButtonWidget()
-    }
-}
-
-// MARK: - Deep links (handled in src/utils/deepLinks.ts)
-
-enum NotifyeLinks {
-    static func send(urgent: Bool) -> URL {
-        URL(string: urgent ? "notifye://send?kind=priority" : "notifye://send")!
     }
 }
 

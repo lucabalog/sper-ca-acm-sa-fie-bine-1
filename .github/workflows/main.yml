@@ -18,7 +18,7 @@ permissions:
 jobs:
   build_ipa:
     name: Build Notifye iOS IPA
-    runs-on: macos-15
+    runs-on: macos-15-intel  # Apple-silicon macos-15 runners kept timing out in the queue
 
     steps:
       - name: Checkout repository
@@ -76,8 +76,8 @@ jobs:
           /usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes:0:CFBundleURLSchemes:0 string notifye" "$PLIST_PATH" 2>/dev/null || true
 
           ICON_DEST="ios/App/App/Assets.xcassets/AppIcon.appiconset"
-          if [ -f "public/pwa-512x512.png" ] && [ -d "$ICON_DEST" ]; then
-            sips -z 1024 1024 public/pwa-512x512.png --out "$ICON_DEST/AppIcon-512@2x.png"
+          if [ -f "public/app-icon-1024.png" ] && [ -d "$ICON_DEST" ]; then
+            cp public/app-icon-1024.png "$ICON_DEST/AppIcon-512@2x.png"
             cat > "$ICON_DEST/Contents.json" << 'EOF'
           {
             "images" : [
@@ -170,7 +170,9 @@ jobs:
             npx cap add android
           fi
           # Full-screen (immersive) activity
-          cp android-native/MainActivity.java android/app/src/main/java/com/notifye/app/MainActivity.java
+          # Native code: full-screen activity, background listener service, plugin, boot receiver
+          cp android-native/*.java android/app/src/main/java/com/notifye/app/
+          python3 android-native/patch-manifest.py android/app/src/main/AndroidManifest.xml
           npx cap sync android
 
       - name: Set Android app icon

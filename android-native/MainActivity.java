@@ -29,6 +29,7 @@ public class MainActivity extends BridgeActivity {
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
+        registerPlugin(NotifyeListenerPlugin.class);
         super.onCreate(savedInstanceState);
         WindowCompat.setDecorFitsSystemWindows(getWindow(), false);
         hideSystemBars();
@@ -58,6 +59,18 @@ public class MainActivity extends BridgeActivity {
                 pushInsetsToPage();
             }
         });
+    }
+
+    @Override
+    public void onResume() {
+        super.onResume();
+        NotifyeListenerService.appVisible = true;
+    }
+
+    @Override
+    public void onPause() {
+        NotifyeListenerService.appVisible = false;
+        super.onPause();
     }
 
     @Override

@@ -2,7 +2,6 @@ import React, { useEffect, useState } from 'react';
 import { Bell, BellRing, Check, RotateCcw, Sparkles, X } from 'lucide-react';
 import { AnimatePresence, LayoutGroup, motion, useReducedMotion } from 'motion/react';
 import type { AutoDeleteDuration, PingDoc, StudioThemePrefs } from '../types';
-import { ClosedAppNotificationsCard } from './ClosedAppNotificationsCard';
 import {
   DEFAULT_THEME_PREFS,
   NOTIFICATION_COLOR_SWATCHES,
@@ -22,10 +21,6 @@ interface NotificationsSheetProps {
   onChangeAutoDelete: (seconds: AutoDeleteDuration) => void;
   onToggleFloatingAlerts: () => void;
   onPreviewAlert: (urgent: boolean) => void;
-  closedAppPushEnabled: boolean;
-  onSetClosedAppPush: (enabled: boolean) => void;
-  partnerHasClosedAppPush: boolean;
-  partnerName: string;
 }
 
 type NotifTab = 'alerts' | 'customize';
@@ -53,10 +48,6 @@ export const NotificationsSheet: React.FC<NotificationsSheetProps> = ({
   onChangeAutoDelete,
   onToggleFloatingAlerts,
   onPreviewAlert,
-  closedAppPushEnabled,
-  onSetClosedAppPush,
-  partnerHasClosedAppPush,
-  partnerName,
 }) => {
   const [activeTab, setActiveTab] = useState<NotifTab>('alerts');
   const [selectedTier, setSelectedTier] = useState<AlertTier>('normal');
@@ -192,13 +183,6 @@ export const NotificationsSheet: React.FC<NotificationsSheetProps> = ({
                     transition={{ duration: 0.16, ease: [0.16, 1, 0.3, 1] }}
                     className="space-y-4"
                   >
-                    <ClosedAppNotificationsCard
-                      enabled={closedAppPushEnabled}
-                      onSetEnabled={onSetClosedAppPush}
-                      partnerHasIt={partnerHasClosedAppPush}
-                      partnerName={partnerName}
-                      accentColor={accentColor}
-                    />
 
                     {/* Controls Bar */}
                     <div className="flex flex-wrap items-center justify-between gap-3 py-2 border-y border-white/10">

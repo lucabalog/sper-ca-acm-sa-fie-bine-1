@@ -35,7 +35,6 @@ import type {
   UserProfile,
 } from './types';
 import { ErrorBoundary } from './components/ErrorBoundary';
-import { ClosedAppPrompt } from './components/ClosedAppPrompt';
 import { NameSetupView } from './components/NameSetupView';
 import { OfflineIndicator } from './components/OfflineIndicator';
 import { PairedStudio } from './components/PairedStudio';
@@ -43,17 +42,21 @@ import { PairingView } from './components/PairingView';
 import { WidgetStandaloneView } from './components/WidgetStandaloneView';
 import { playWarmChime } from './utils/chime';
 import { triggerHaptic } from './utils/haptics';
-import { loadThemePrefs, resolveAmbientPalette, saveThemePrefs } from './utils/themeColors';
+import {
+  loadThemePrefs,
+  normalPingMessage,
+  resolveAmbientPalette,
+  saveThemePrefs,
+} from './utils/themeColors';
 import {
   devicePlatform,
   getReceiveTopic,
-  isClosedAppPushEnabled,
   sendClosedAppPush,
-  setClosedAppPushEnabled,
   toDeviceToken,
   topicFromDeviceToken,
 } from './utils/closedAppPush';
 import { subscribeToWidgetLinks } from './utils/deepLinks';
+import { startBackgroundListener, stopBackgroundListener } from './utils/backgroundListener';
 import { ensureNativeNotificationPermission } from './utils/nativeNotifications';
 import { syncNativeWidgetState } from './utils/widgetBridge';
 
@@ -112,6 +115,9 @@ function TetherWorkspace() {
   const [fbUser, setFbUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [pair, setPair] = useState<PairDoc | null>(null);
+  // Pair ID whose document has been loaded at least once. Until then a paired user sees the
+  // splash instead of a flash of the pairing screen.
+  const [pairResolvedId, setPairResolvedId] = useState('');
   const [pings, setPings] = useState<PingDoc[]>([]);
   const [partnerDeviceToken, setPartnerDeviceToken] = useState('');
   const [soundEnabled, setSoundEnabled] = useState(true);
@@ -339,6 +345,8 @@ function TetherWorkspace() {
     }
 
     const targetPairId = profile.pairId;
+    // Never keep the splash up forever (e.g. offline on first launch with nothing cached).
+    const resolveTimer = window.setTimeout(() => setPairResolvedId(targetPairId), 6000);
     const pairsQuery = query(
       collection(db, 'pairs'),
       where('memberUids', 'array-contains', fbUser.uid)
@@ -347,6 +355,11 @@ function TetherWorkspace() {
       pairsQuery,
       (snap) => {
         const match = snap.docs.find((d) => d.id === targetPairId);
+        // An empty answer from the local cache isn't final; wait for the server.
+        if (match || !snap.metadata.fromCache) {
+          window.clearTimeout(resolveTimer);
+          setPairResolvedId(targetPairId);
+        }
         if (!match) {
           setPair(null);
           if (!snap.metadata.fromCache) {
@@ -405,7 +418,10 @@ function TetherWorkspace() {
       (err) => handleFirestoreError(err, OperationType.LIST, 'pairs')
     );
 
-    return () => unsubPair();
+    return () => {
+      window.clearTimeout(resolveTimer);
+      unsubPair();
+    };
   }, [authReady, fbUser, profile?.pairId]);
 
   // 4. Listen to Real-Time Pings & Partner Device Token
@@ -507,41 +523,37 @@ function TetherWorkspace() {
     };
   }, [authReady, fbUid, activePairId]);
 
-  // Closed-app notifications (ntfy): share this phone's receive topic with the partner.
-  const [closedAppPushEnabled, setClosedAppPushEnabledState] = useState(isClosedAppPushEnabled);
+  // Closed-app notifications, shown by Notifye itself (no other app to install). The native
+  // listener (Android: NotifyeListenerService, iPhone: NotifyeLiveListener) keeps a connection to
+  // this phone's private relay channel, which is advertised to the partner here.
+  const canReceiveInBackground = Capacitor.isNativePlatform();
   const pairMembersKey = pair && pair.status === 'active' ? pair.memberUids.join(',') : '';
+  const partnerNameForListener =
+    pair && pair.status === 'active'
+      ? (pair.partnerAUid === fbUid ? pair.partnerBName : pair.partnerAName) || 'Partner'
+      : '';
   useEffect(() => {
     if (!fbUid || !activePairId || !pairMembersKey) return;
     void setDoc(doc(db, 'pairs', activePairId, 'devices', fbUid), {
       uid: fbUid,
       pairId: activePairId,
       memberUids: pairMembersKey.split(','),
-      fcmToken: closedAppPushEnabled ? toDeviceToken(getReceiveTopic()) : '',
+      fcmToken: canReceiveInBackground ? toDeviceToken(getReceiveTopic()) : '',
       platform: devicePlatform(),
       updatedAt: serverTimestamp(),
     }).catch(() => undefined);
-  }, [fbUid, activePairId, pairMembersKey, closedAppPushEnabled]);
+  }, [fbUid, activePairId, pairMembersKey, canReceiveInBackground]);
 
-  const [closedAppPromptDismissed, setClosedAppPromptDismissed] = useState(() => {
-    try {
-      return localStorage.getItem('notifye_push_prompt_dismissed') === '1';
-    } catch {
-      return false;
+  useEffect(() => {
+    if (!canReceiveInBackground) return;
+    if (activePairId) {
+      void ensureNativeNotificationPermission().then(() =>
+        startBackgroundListener(getReceiveTopic(), partnerNameForListener)
+      );
+    } else {
+      void stopBackgroundListener();
     }
-  });
-  const dismissClosedAppPrompt = useCallback(() => {
-    setClosedAppPromptDismissed(true);
-    try {
-      localStorage.setItem('notifye_push_prompt_dismissed', '1');
-    } catch {
-      // ignore storage errors
-    }
-  }, []);
-
-  const handleSetClosedAppPush = useCallback((enabled: boolean) => {
-    setClosedAppPushEnabled(enabled);
-    setClosedAppPushEnabledState(enabled);
-  }, []);
+  }, [canReceiveInBackground, activePairId, partnerNameForListener]);
 
   // Ask once for notification permission in the native app as soon as a pair is active.
   useEffect(() => {
@@ -797,7 +809,7 @@ function TetherWorkspace() {
       const now = Date.now();
       const message = urgent
         ? themePrefs.priorityNotifMessage.trim() || 'Your partner really needs your attention'
-        : themePrefs.normalNotifMessage.trim() || 'Your partner wants your attention';
+        : normalPingMessage(themePrefs);
       const isRealActive = Boolean(pair && pair.status === 'active');
       const partnerDisplay = isRealActive
         ? (pair!.partnerAUid === fbUser?.uid ? pair!.partnerBName : pair!.partnerAName) || 'Partner'
@@ -840,6 +852,7 @@ function TetherWorkspace() {
       testMode,
       themePrefs.incomingHapticIntensity,
       themePrefs.normalNotifMessage,
+      themePrefs.buttonLabel,
       themePrefs.priorityNotifMessage,
       themePrefs.priorityNotifTag,
     ]
@@ -999,7 +1012,7 @@ function TetherWorkspace() {
       message:
         action === 'priority'
           ? themePrefs.priorityNotifMessage.trim() || 'Your partner really needs your attention'
-          : themePrefs.normalNotifMessage.trim() || 'Your partner wants your attention',
+          : normalPingMessage(themePrefs),
       kind: action === 'priority' ? 'urgent_attention' : 'attention',
     });
   }, [
@@ -1010,6 +1023,7 @@ function TetherWorkspace() {
     testMode,
     dispatchPing,
     themePrefs.normalNotifMessage,
+    themePrefs.buttonLabel,
     themePrefs.priorityNotifMessage,
     widgetActionTick,
   ]);
@@ -1075,6 +1089,14 @@ function TetherWorkspace() {
   }
 
   if (!profile) {
+    return (
+      <div className="min-h-dvh bg-[#0B0B0F] flex items-center justify-center">
+        <div className="w-8 h-8 rounded-full border-2 border-amber-500/30 border-t-amber-400 animate-spin" />
+      </div>
+    );
+  }
+
+  if (profile.pairId && pairResolvedId !== profile.pairId && !testMode) {
     return (
       <div className="min-h-dvh bg-[#0B0B0F] flex items-center justify-center">
         <div className="w-8 h-8 rounded-full border-2 border-amber-500/30 border-t-amber-400 animate-spin" />
@@ -1150,7 +1172,7 @@ function TetherWorkspace() {
           onSendNormal={() =>
             dispatchPing({
               message:
-                themePrefs.normalNotifMessage.trim() || 'Your partner wants your attention',
+                normalPingMessage(themePrefs),
               kind: 'attention',
             })
           }
@@ -1173,13 +1195,13 @@ function TetherWorkspace() {
           onChangeAutoDelete={handleChangeAutoDelete}
           onOpenCustomize={() => setShowCustomizeSheet(true)}
           onOpenNotifications={() => setShowNotificationsSheet(true)}
-          onOpenWidgets={() => setShowWidgetsSheet(true)}
+          // Widgets tab hidden: the Home Screen widget is added from iOS itself (see README).
           soundEnabled={soundEnabled}
           onToggleSound={handleToggleSound}
           onSendAttentionPing={() =>
             dispatchPing({
               message:
-                themePrefs.normalNotifMessage.trim() || 'Your partner wants your attention',
+                normalPingMessage(themePrefs),
               kind: 'attention',
             })
           }
@@ -1218,16 +1240,6 @@ function TetherWorkspace() {
         />
       )}
 
-      {showStudio && isActivePair && !closedAppPushEnabled && !closedAppPromptDismissed && !showNotificationsSheet && (
-        <ClosedAppPrompt
-          accentColor={ambientPalette.effectiveButton}
-          onOpen={() => {
-            dismissClosedAppPrompt();
-            setShowNotificationsSheet(true);
-          }}
-          onDismiss={dismissClosedAppPrompt}
-        />
-      )}
 
       <Suspense fallback={null}>
         {customizeMounted && (
@@ -1260,10 +1272,6 @@ function TetherWorkspace() {
               setShowNotificationsSheet(false);
               handlePreviewAlert(urgent);
             }}
-            closedAppPushEnabled={closedAppPushEnabled}
-            onSetClosedAppPush={handleSetClosedAppPush}
-            partnerHasClosedAppPush={Boolean(topicFromDeviceToken(partnerDeviceToken))}
-            partnerName={partnerDisplayName}
           />
         )}
 
@@ -1278,7 +1286,7 @@ function TetherWorkspace() {
             onSendNormal={() =>
               dispatchPing({
                 message:
-                  themePrefs.normalNotifMessage.trim() || 'Your partner wants your attention',
+                  normalPingMessage(themePrefs),
                 kind: 'attention',
               })
             }

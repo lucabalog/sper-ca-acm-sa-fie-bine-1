@@ -35,8 +35,8 @@ if [ -f "$PLIST_PATH" ]; then
 fi
 
 ICON_DEST="ios/App/App/Assets.xcassets/AppIcon.appiconset"
-if [ -f "public/pwa-512x512.png" ] && [ -d "$ICON_DEST" ]; then
-  sips -z 1024 1024 public/pwa-512x512.png --out "$ICON_DEST/AppIcon-512@2x.png" >/dev/null
+if [ -f "public/app-icon-1024.png" ] && [ -d "$ICON_DEST" ]; then
+  cp public/app-icon-1024.png "$ICON_DEST/AppIcon-512@2x.png"
   cat > "$ICON_DEST/Contents.json" << 'EOF'
 {
   "images" : [

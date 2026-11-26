@@ -6,17 +6,55 @@ import {
   indexedDBLocalPersistence,
   initializeAuth,
 } from 'firebase/auth';
-import { doc, getDocFromServer, getFirestore } from 'firebase/firestore';
+import {
+  disableNetwork,
+  doc,
+  enableNetwork,
+  getDocFromServer,
+  getFirestore,
+  initializeFirestore,
+} from 'firebase/firestore';
 import type { MessagePayload } from 'firebase/messaging';
 
 // Web push (FCM) only works in browsers, so the messaging SDK is loaded on demand.
 const loadMessaging = () => import('firebase/messaging');
 import firebaseConfig from '../firebase-applet-config.json';
+import { nativeListenerAvailable } from './utils/backgroundListener';
 import { showNativeNotification } from './utils/nativeNotifications';
 
 const app = initializeApp(firebaseConfig);
 
-export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
+// Native WebViews: auto-detect long polling, which survives the network switches and
+// suspensions of a mobile app better than the default streaming connection.
+export const db = Capacitor.isNativePlatform()
+  ? initializeFirestore(
+      app,
+      { experimentalAutoDetectLongPolling: true },
+      firebaseConfig.firestoreDatabaseId
+    )
+  : getFirestore(app, firebaseConfig.firestoreDatabaseId);
+
+/**
+ * After the app was in the background for a while, the WebView's connection to Firestore can
+ * be dead without the SDK noticing (taps stop arriving or arrive late until the app is killed).
+ * Cycling the network forces a fresh connection; listeners stay subscribed and resync.
+ */
+let hiddenAt = 0;
+if (typeof document !== 'undefined') {
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') {
+      hiddenAt = Date.now();
+      return;
+    }
+    if (hiddenAt && Date.now() - hiddenAt > 30_000) {
+      void disableNetwork(db)
+        .catch(() => undefined)
+        .then(() => enableNetwork(db))
+        .catch(() => undefined);
+    }
+    hiddenAt = 0;
+  });
+}
 // In the Capacitor iOS wrapper (WKWebView), getAuth() registers the popup/redirect resolver,
 // which loads a hidden auth iframe from authDomain on startup. That iframe never finishes
 // under capacitor://localhost, so onAuthStateChanged never fires and the app spins forever.
@@ -187,9 +225,10 @@ export async function subscribeForegroundFcm(
 
 export async function showPartnerSystemNotification(title: string, body: string): Promise<void> {
   if (Capacitor.isNativePlatform()) {
-    // In the foreground the in-app banner already shows; use a system notification when the
-    // app is in the background (it keeps listening for a short while before the OS suspends it).
+    // In the foreground the in-app banner already shows. In the background the native listener
+    // posts the notification; posting here too would show every tap twice.
     if (typeof document !== 'undefined' && document.visibilityState === 'visible') return;
+    if (nativeListenerAvailable()) return;
     await showNativeNotification(title, body);
     return;
   }

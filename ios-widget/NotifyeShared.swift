@@ -35,6 +35,33 @@ enum NotifyeShared {
         return UserDefaults(suiteName: id)
     }
 
+    /// Saved widget/pairing state. Read from the shared App Group first; fall back to this
+    /// process's own storage, which is what the app process sees when iOS runs the widget's
+    /// button intent inside the app (re-signed installs often have no working App Group).
+    static func loadStateData() -> Data? {
+        defaults?.data(forKey: stateKey) ?? UserDefaults.standard.data(forKey: stateKey)
+    }
+
+    /// Written by the app: to the App Group (for the widget) and to the app's own storage.
+    static func saveStateData(_ data: Data) {
+        defaults?.set(data, forKey: stateKey)
+        UserDefaults.standard.set(data, forKey: stateKey)
+    }
+
+    static func clearStateData() {
+        defaults?.removeObject(forKey: stateKey)
+        UserDefaults.standard.removeObject(forKey: stateKey)
+    }
+
+    /// Status shown on the widget after a tap ("Sent to …").
+    static func setStatus(_ status: String) {
+        let now = Date().timeIntervalSince1970 * 1000.0
+        for store in [defaults, UserDefaults.standard].compactMap({ $0 }) {
+            store.set(status, forKey: lastStatusKey)
+            store.set(now, forKey: lastSentKey)
+        }
+    }
+
     /// App Groups listed in this bundle's embedded.mobileprovision (present on sideloaded and
     /// development builds; absent on App Store builds, where the fallbacks apply).
     private static func provisionedAppGroups() -> [String] {

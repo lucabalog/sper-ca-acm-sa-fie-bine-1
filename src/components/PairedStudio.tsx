@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   Bell,
   LayoutGrid,
@@ -63,6 +63,14 @@ function formatKindLabel(
 
 const TIMER_CHOICES: AutoDeleteDuration[] = [5, 10, 15];
 
+// Rapid taps add a ping each; cap the list and skip layout animations on touch devices
+// (each layout animation re-measures every row).
+const MAX_VISIBLE_PINGS = 8;
+const FINE_POINTER =
+  typeof window !== 'undefined' &&
+  typeof window.matchMedia === 'function' &&
+  window.matchMedia('(hover: hover) and (pointer: fine)').matches;
+
 export const PairedStudio: React.FC<PairedStudioProps> = ({
   profile,
   pair,
@@ -116,14 +124,23 @@ export const PairedStudio: React.FC<PairedStudioProps> = ({
   const partnerName = isPartnerA ? pair.partnerBName || 'Partner' : pair.partnerAName || 'Partner';
   const ttlMs = themePrefs.autoDeleteSeconds * 1000;
 
-  const handleMainButtonPress = async () => {
+  // Rapid taps: replay the heading bounce at most every 350 ms (each replay remounts it).
+  const lastWaveAtRef = useRef(0);
+  const bumpWave = () => {
+    const now = Date.now();
+    if (now - lastWaveAtRef.current < 350) return;
+    lastWaveAtRef.current = now;
     setPressWaveCount((c) => c + 1);
-    await onSendAttentionPing();
   };
 
-  const handleMainButtonUrgentPress = async () => {
-    setPressWaveCount((c) => c + 1);
-    await onSendUrgentAttentionPing();
+  const handleMainButtonPress = () => {
+    bumpWave();
+    void onSendAttentionPing();
+  };
+
+  const handleMainButtonUrgentPress = () => {
+    bumpWave();
+    void onSendUrgentAttentionPing();
   };
 
   // Layout placement & sizing helpers
@@ -308,7 +325,7 @@ export const PairedStudio: React.FC<PairedStudioProps> = ({
                   </motion.p>
                 ) : lastSentFeedback ? (
                   <motion.p
-                    key={`sent_${pressWaveCount}_${lastSentFeedback}`}
+                    key={`sent_${lastSentFeedback}`}
                     initial={
                       prefersReducedMotion
                         ? { opacity: 0 }
@@ -431,7 +448,7 @@ export const PairedStudio: React.FC<PairedStudioProps> = ({
               ) : (
                 <ul className="divide-y divide-white/[0.06]">
                   <AnimatePresence initial={false}>
-                    {pings.map((ping) => {
+                    {pings.slice(0, MAX_VISIBLE_PINGS).map((ping) => {
                       const isSelf = ping.senderUid === profile.uid;
                       const isUrgent = ping.kind === 'urgent_attention';
                       const customNormalColor = themePrefs.normalNotifColor.trim();
@@ -450,7 +467,7 @@ export const PairedStudio: React.FC<PairedStudioProps> = ({
                       return (
                         <motion.li
                           key={ping.pingId}
-                          layout
+                          layout={FINE_POINTER}
                           initial={
                             prefersReducedMotion ? { opacity: 0 } : { opacity: 0, y: -10, scale: 0.97 }
                           }

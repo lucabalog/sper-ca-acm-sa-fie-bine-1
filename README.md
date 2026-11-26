@@ -19,8 +19,8 @@ With a free Apple ID, an iPhone sideload stops opening after 7 days. Re-sign it,
 
 1. **Name:** on first launch, choose the name your partner will see.
 2. **Pair:** one phone taps **Create pairing code**, and the other types that code under **Enter partner's code**.
-3. **Notify:** tap the big button to send a notification. Every tap sends one, even when you tap quickly. Hold the button for 3 seconds to send a **priority** alert.
-4. **Customize:** the bottom bar has **Notifications** (history and alert style), **Widgets** and **Customize** (colors, shape, size, night mode).
+3. **Notify:** tap the big button to send a notification. If you change the button's text in **Customize**, that text is what your partner's notification says. Every tap sends one, even when you tap quickly. Hold the button for 3 seconds to send a **priority** alert.
+4. **Customize:** the bottom bar has **Notifications** (history, alert style, closed-app notifications) and **Customize** (colors, shape, size, night mode).
 
 ### iPhone Home Screen widget (iOS 17+)
 
@@ -28,17 +28,14 @@ With a free Apple ID, an iPhone sideload stops opening after 7 days. Re-sign it,
 2. Search for **Notifye** and pick a size.
 3. Tap the widget's button to notify your partner without opening the app. It uses the same colors as your in-app button.
 
-To show your partner's name and send in the background, the widget reads the pairing from storage it shares with the app (an *App Group*). Some re-signing setups remove that shared storage. When it's missing, tapping the widget opens Notifye, which then sends the notification. The **Widgets** screen in the app tells you when this is happening.
+Tapping the widget never opens Notifye. iOS runs the send inside the Notifye app in the background, so it works even when re-signing removed the storage the app shares with its widget (an *App Group*). Without that shared storage, the widget can't show your partner's name or the "Sent" confirmation, but it still sends. Open Notifye once after installing so the widget has your pairing.
 
 ### Notifications
 
 - **While the app is open:** a banner, a sound and a vibration.
 - **While the app is in the background:** a system notification, for as long as the phone keeps the app running.
-- **When the app is fully closed (free, iPhone and Android):** after pairing, Notifye suggests turning this on. You can also find it any time under **Notifications → Notify me when Notifye is closed**. Tap **Turn on**:
-  - **Android:** ntfy opens already subscribed. If ntfy isn't installed, Google Play opens first, and ntfy opens by itself when you come back. Back in Notifye, a test notification is sent automatically.
-  - **iPhone:** your private code is copied. Open ntfy, tap **+**, paste and tap **Subscribe**. Back in Notifye, a test notification is sent automatically. The ntfy iPhone app doesn't accept subscribe links from other apps, so this one paste can't be automated.
-
-  Each person does this once on their own phone. After that, every tap also goes to the partner's ntfy, which shows it even when Notifye is closed. During a burst of fast taps, the first tap arrives right away and the rest are combined into one follow-up ("+3 more"), because ntfy.sh allows about one message every 5 seconds and 250 a day per phone.
+- **Android, app closed:** Notifye shows the notification itself, instantly. Nothing to set up and nothing else to install. After pairing, Notifye runs a small background connection. Android requires a permanent "Notifye: Ready for …'s taps" notification for that; you can hide it by long-pressing it and turning off **Background connection**. It restarts by itself after a reboot. Some phones (Xiaomi, Huawei, Samsung with strict battery saving) may still stop it; if taps stop arriving, set Notifye's battery usage to **Unrestricted**.
+- **iPhone, app closed:** Notifye shows the notification itself, with sound, right away. While it's in the background it plays a silent sound (mixed with your music, so nothing is interrupted), which keeps it running so it can stay connected. This is not allowed for App Store apps but works for sideloaded ones; it uses a little more battery. If you swipe Notifye away in the app switcher it stops; then it falls back to a background check that iOS runs when it chooses (usually every 15 minutes to a few hours). Open Notifye again to restore instant notifications.
 
 ## How it works
 
@@ -56,7 +53,7 @@ To show your partner's name and send in the background, the widget reads the pai
   - `NotifyeBridgeViewController`, which registers that plugin and hides the status bar.
   - The widget sends a ping itself with Firestore's REST API.
 - **Android:** `android-native/MainActivity.java` replaces the generated activity. It runs the app full screen (immersive) and keeps text at 100% size. It also passes the real camera-cutout and gesture-bar sizes to the page, because Android WebView doesn't report safe areas reliably.
-- **Closed-app notifications:** `src/utils/closedAppPush.ts` publishes each ping to the partner's [ntfy](https://ntfy.sh) topic. The topic is a long random string, and the partner's phone reads it from Firestore (`pairs/{pairId}/devices/{uid}`). The iOS widget publishes the same way.
+- **Closed-app notifications (Android):** `android-native/NotifyeListenerService.java` is a foreground service that keeps a streaming connection to the phone's private relay channel on [ntfy.sh](https://ntfy.sh) (a free public relay; the ntfy app is not needed) and shows Notifye notifications. The sender's app publishes each ping there (`src/utils/closedAppPush.ts`). The channel name is a long random string shared with the partner through Firestore (`pairs/{pairId}/devices/{uid}`).
 
 ### Project layout
 
@@ -64,9 +61,9 @@ To show your partner's name and send in the background, the widget reads the pai
 src/
   App.tsx                  app state, Firebase listeners, sending pings
   components/              screens (NameSetupView, PairingView, PairedStudio) and sheets
-  utils/                   theme colors, haptics, chime, widget bridge, deep links, notifications
+  utils/                   theme colors, haptics, chime, widget bridge, deep links, notifications, background listener
 ios-widget/                iOS widget + bridge sources and the Xcode setup script
-android-native/            Android MainActivity (full screen)
+android-native/            Android MainActivity (full screen), background listener service, boot receiver, manifest patch
 .github/workflows/main.yml CI: builds the IPA (macOS) and the APK (Ubuntu)
 firebase-applet-config.json Firebase web config (client keys, safe to ship)
 ```
@@ -94,15 +91,15 @@ npm run lint         # type check (tsc --noEmit)
   npm install && npm run build
   npm install --no-save @capacitor/cli@^7 @capacitor/android@^7
   npx cap add android
-  cp android-native/MainActivity.java android/app/src/main/java/com/notifye/app/MainActivity.java
+  cp android-native/*.java android/app/src/main/java/com/notifye/app/
+  python3 android-native/patch-manifest.py android/app/src/main/AndroidManifest.xml
   npx cap sync android
   cd android && ./gradlew assembleDebug   # app/build/outputs/apk/debug/app-debug.apk
   ```
 
 ## Limitations
 
-- **Closed-app notifications go through ntfy.** Notifye itself can't receive push notifications, because Apple only allows that for apps signed with a paid developer account. ntfy is a separate free app that already has that permission, so it delivers the notification instead, and tapping it opens ntfy, not Notifye.
-  - Messages pass through the public ntfy.sh server. Only someone who knows your long topic can read them.
-  - The free tier allows 250 messages a day per phone.
+- **Instant notifications on a closed iPhone** need Apple push, which Apple only allows for apps signed with a paid developer account. Free-signed iPhones get Notifye's background check instead (see above).
+- **Android relay:** taps pass through the public ntfy.sh relay. Only someone who knows the long random channel name can read them. Fast bursts are combined ("+3 more") to stay within ntfy.sh's limits (about one message every 5 seconds, 250 a day per phone).
 - **Android signing:** the APK is signed with a temporary debug key that changes on each CI build. Updating to a newer build may mean uninstalling the old one first, which deletes the phone's saved name and pairing.
 - **No Android widget yet.**

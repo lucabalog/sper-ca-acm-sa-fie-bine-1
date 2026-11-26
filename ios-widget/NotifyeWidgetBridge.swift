@@ -16,18 +16,14 @@ public class NotifyeWidgetBridge: CAPPlugin, CAPBridgedPlugin {
             call.reject("Invalid widget state payload")
             return
         }
-        guard let defaults = NotifyeShared.defaults else {
-            // Not entitled to any App Group (e.g. re-signed without one): the widget can't read state.
-            call.resolve(["appGroupAvailable": false])
-            return
-        }
-        defaults.set(jsonData, forKey: NotifyeShared.stateKey)
+        NotifyeShared.saveStateData(jsonData)
         reloadWidgets()
-        call.resolve(["appGroupAvailable": true, "appGroup": NotifyeShared.appGroupId ?? ""])
+        let group = NotifyeShared.appGroupId
+        call.resolve(["appGroupAvailable": group != nil, "appGroup": group ?? ""])
     }
 
     @objc func clearWidgetState(_ call: CAPPluginCall) {
-        NotifyeShared.defaults?.removeObject(forKey: NotifyeShared.stateKey)
+        NotifyeShared.clearStateData()
         reloadWidgets()
         call.resolve()
     }

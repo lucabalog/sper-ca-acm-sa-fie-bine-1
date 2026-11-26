@@ -32,7 +32,8 @@ export async function showNativeNotification(title: string, body: string): Promi
     if (perm.display !== 'granted') return;
     nextId = (nextId + 1) % 2_000_000_000;
     await LocalNotifications.schedule({
-      notifications: [{ id: nextId, title, body }],
+      // iOS plays no sound unless one is named; 'default' falls back to the system sound.
+      notifications: [{ id: nextId, title, body, ...(Capacitor.getPlatform() === 'ios' ? { sound: 'default' } : {}) }],
     });
   } catch {
     // Notification delivery is best effort; the in-app banner still shows.

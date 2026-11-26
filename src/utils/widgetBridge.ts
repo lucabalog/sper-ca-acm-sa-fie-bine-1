@@ -1,7 +1,7 @@
 import { Capacitor, registerPlugin } from '@capacitor/core';
 import firebaseConfig from '../../firebase-applet-config.json';
 import type { PairDoc, StudioThemePrefs, UserProfile } from '../types';
-import { getContrastInk, shiftColor } from './themeColors';
+import { getContrastInk, normalPingMessage, shiftColor } from './themeColors';
 
 /** shiftColor() returns `rgb(r, g, b)`; the Swift widget expects `#RRGGBB`. */
 function shiftHex(hex: string, delta: number): string {
@@ -82,8 +82,7 @@ export async function syncNativeWidgetState(params: {
     buttonLabel: themePrefs.buttonLabel || 'Think of me',
     buttonColorHex: buttonColor,
     backgroundColorHex: themePrefs.backgroundColor || '#0B0B0F',
-    normalMessage:
-      themePrefs.normalNotifMessage.trim() || 'Your partner wants your attention',
+    normalMessage: normalPingMessage(themePrefs),
     priorityMessage:
       themePrefs.priorityNotifMessage.trim() || 'Your partner really needs your attention',
     defaultUrgent: themePrefs.widgetDefaultKind === 'urgent_attention',

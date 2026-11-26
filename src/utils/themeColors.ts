@@ -288,3 +288,13 @@ export function saveThemePrefs(prefs: StudioThemePrefs): void {
     // Ignore storage unavailability
   }
 }
+
+/**
+ * Text of a normal notification. A customized button label wins (what you see on the button is
+ * what your partner gets); otherwise the custom notification message, otherwise the default.
+ */
+export function normalPingMessage(prefs: StudioThemePrefs): string {
+  const label = prefs.buttonLabel.trim();
+  if (label && label !== DEFAULT_THEME_PREFS.buttonLabel) return label;
+  return prefs.normalNotifMessage.trim() || DEFAULT_THEME_PREFS.normalNotifMessage;
+}

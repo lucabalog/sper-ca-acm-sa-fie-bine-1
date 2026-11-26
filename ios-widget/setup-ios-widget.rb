@@ -15,7 +15,12 @@ app_group = project.main_group.find_subpath('App', true)
 
 # Copy the widget bridge plugin, its registering view controller and shared helpers into the App target
 bridge_dir = 'ios/App/App'
-APP_SWIFT_FILES = %w[NotifyeWidgetBridge.swift NotifyeBridgeViewController.swift NotifyeShared.swift].freeze
+APP_SWIFT_FILES = %w[
+  NotifyeWidgetBridge.swift NotifyeBridgeViewController.swift NotifyeShared.swift
+  NotifyeIntent.swift NotifyeBackgroundCheck.swift NotifyeLiveListener.swift
+].freeze
+# AppDelegate with the background check (replaces the generated one, already in the target)
+FileUtils.cp('ios-widget/AppDelegate.swift', "#{bridge_dir}/AppDelegate.swift")
 APP_SWIFT_FILES.each { |f| FileUtils.cp("ios-widget/#{f}", "#{bridge_dir}/#{f}") }
 FileUtils.cp('ios-widget/App.entitlements', "#{bridge_dir}/App.entitlements")
 
@@ -49,13 +54,28 @@ app_target.build_configurations.each do |cfg|
   # iOS 14 is the lowest version Capacitor 7 supports. The widget extension below stays
   # at iOS 17 (interactive widgets); on older iOS the app runs without the widget.
   cfg.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '14.0'
+  # The widget's send intent is also compiled into the app (so iOS can run it in the app
+  # process). AppIntents only exists on iOS 16+, so weak-link it to keep iOS 14/15 launching.
+  flags = Array(cfg.build_settings['OTHER_LDFLAGS'] || ['$(inherited)'])
+  flags += ['-weak_framework', 'AppIntents'] unless flags.include?('AppIntents')
+  cfg.build_settings['OTHER_LDFLAGS'] = flags
 end
+
+# Background check (NotifyeBackgroundCheck.swift) needs background fetch + a permitted task ID
+info_path = "#{bridge_dir}/Info.plist"
+info = Xcodeproj::Plist.read_from_path(info_path)
+# fetch: background check; audio: silent keep-alive for the live listener (NotifyeLiveListener)
+info['UIBackgroundModes'] = (Array(info['UIBackgroundModes']) | %w[fetch audio])
+info['BGTaskSchedulerPermittedIdentifiers'] =
+  (Array(info['BGTaskSchedulerPermittedIdentifiers']) | ['com.notifye.app.refresh'])
+Xcodeproj::Plist.write_to_path(info, info_path)
 
 # Create NotifyeWidgets extension target
 widget_dir = 'ios/App/NotifyeWidgets'
 FileUtils.mkdir_p(widget_dir)
 FileUtils.cp('ios-widget/NotifyeWidget.swift', "#{widget_dir}/NotifyeWidget.swift")
 FileUtils.cp('ios-widget/NotifyeShared.swift', "#{widget_dir}/NotifyeShared.swift")
+FileUtils.cp('ios-widget/NotifyeIntent.swift', "#{widget_dir}/NotifyeIntent.swift")
 FileUtils.cp('ios-widget/WidgetInfo.plist', "#{widget_dir}/Info.plist")
 FileUtils.cp('ios-widget/NotifyeWidgets.entitlements', "#{widget_dir}/NotifyeWidgets.entitlements")
 
@@ -69,6 +89,8 @@ swift_ref = widget_group.files.find { |f| File.basename(f.path.to_s) == 'Notifye
             widget_group.new_file('NotifyeWidget.swift')
 shared_ref = widget_group.files.find { |f| File.basename(f.path.to_s) == 'NotifyeShared.swift' } ||
              widget_group.new_file('NotifyeShared.swift')
+intent_ref = widget_group.files.find { |f| File.basename(f.path.to_s) == 'NotifyeIntent.swift' } ||
+             widget_group.new_file('NotifyeIntent.swift')
 plist_ref = widget_group.files.find { |f| File.basename(f.path.to_s) == 'Info.plist' } ||
             widget_group.new_file('Info.plist')
 ent_ref = widget_group.files.find { |f| File.basename(f.path.to_s) == 'NotifyeWidgets.entitlements' } ||
@@ -77,7 +99,7 @@ ent_ref = widget_group.files.find { |f| File.basename(f.path.to_s) == 'NotifyeWi
 widget_group.set_source_tree('<group>')
 widget_group.set_path('NotifyeWidgets')
 
-[swift_ref, shared_ref].each do |ref|
+[swift_ref, shared_ref, intent_ref].each do |ref|
   unless widget_target.source_build_phase.files_references.include?(ref)
     widget_target.source_build_phase.add_file_reference(ref)
   end
