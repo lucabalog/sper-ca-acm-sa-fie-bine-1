@@ -39,7 +39,7 @@ export const WidgetStandaloneView: React.FC<WidgetStandaloneViewProps> = ({
 
   return (
     <div
-      className="min-h-screen text-[#F5F5F7] flex flex-col justify-between p-4 sm:p-6"
+      className="min-h-dvh text-[#F5F5F7] flex flex-col justify-between p-4 sm:p-6 pt-safe-4 pb-safe-4"
       style={{ backgroundColor: ambient.effectiveBg }}
     >
       <header className="w-full max-w-xl mx-auto flex items-center justify-between gap-4">

@@ -13,18 +13,31 @@ abort 'Could not find App target' unless app_target
 
 app_group = project.main_group.find_subpath('App', true)
 
-# Copy Capacitor widget bridge plugin files into App target
+# Copy the widget bridge plugin, its registering view controller and shared helpers into the App target
 bridge_dir = 'ios/App/App'
-FileUtils.cp('ios-widget/NotifyeWidgetBridge.swift', "#{bridge_dir}/NotifyeWidgetBridge.swift")
-FileUtils.cp('ios-widget/NotifyeWidgetBridge.m', "#{bridge_dir}/NotifyeWidgetBridge.m")
+APP_SWIFT_FILES = %w[NotifyeWidgetBridge.swift NotifyeBridgeViewController.swift NotifyeShared.swift].freeze
+APP_SWIFT_FILES.each { |f| FileUtils.cp("ios-widget/#{f}", "#{bridge_dir}/#{f}") }
 FileUtils.cp('ios-widget/App.entitlements', "#{bridge_dir}/App.entitlements")
 
-%w[NotifyeWidgetBridge.swift NotifyeWidgetBridge.m].each do |fname|
+APP_SWIFT_FILES.each do |fname|
   existing = app_group.files.find { |f| f.path == fname || File.basename(f.path.to_s) == fname }
   file_ref = existing || app_group.new_file(fname)
   unless app_target.source_build_phase.files_references.include?(file_ref)
     app_target.source_build_phase.add_file_reference(file_ref)
   end
+end
+
+# Load the app through NotifyeBridgeViewController so it can register the local plugin
+# (Capacitor 7 doesn't auto-register app-local plugins).
+storyboard_path = "#{bridge_dir}/Base.lproj/Main.storyboard"
+storyboard = File.read(storyboard_path)
+unless storyboard.include?('NotifyeBridgeViewController')
+  patched = storyboard.sub(
+    'customClass="CAPBridgeViewController" customModule="Capacitor"',
+    'customClass="NotifyeBridgeViewController" customModule="App" customModuleProvider="target"'
+  )
+  abort "Could not find CAPBridgeViewController in #{storyboard_path}" if patched == storyboard
+  File.write(storyboard_path, patched)
 end
 
 unless app_group.files.any? { |f| File.basename(f.path.to_s) == 'App.entitlements' }
@@ -42,6 +55,7 @@ end
 widget_dir = 'ios/App/NotifyeWidgets'
 FileUtils.mkdir_p(widget_dir)
 FileUtils.cp('ios-widget/NotifyeWidget.swift', "#{widget_dir}/NotifyeWidget.swift")
+FileUtils.cp('ios-widget/NotifyeShared.swift', "#{widget_dir}/NotifyeShared.swift")
 FileUtils.cp('ios-widget/WidgetInfo.plist', "#{widget_dir}/Info.plist")
 FileUtils.cp('ios-widget/NotifyeWidgets.entitlements', "#{widget_dir}/NotifyeWidgets.entitlements")
 
@@ -53,6 +67,8 @@ end
 widget_group = project.main_group.find_subpath('NotifyeWidgets', true)
 swift_ref = widget_group.files.find { |f| File.basename(f.path.to_s) == 'NotifyeWidget.swift' } ||
             widget_group.new_file('NotifyeWidget.swift')
+shared_ref = widget_group.files.find { |f| File.basename(f.path.to_s) == 'NotifyeShared.swift' } ||
+             widget_group.new_file('NotifyeShared.swift')
 plist_ref = widget_group.files.find { |f| File.basename(f.path.to_s) == 'Info.plist' } ||
             widget_group.new_file('Info.plist')
 ent_ref = widget_group.files.find { |f| File.basename(f.path.to_s) == 'NotifyeWidgets.entitlements' } ||
@@ -61,8 +77,10 @@ ent_ref = widget_group.files.find { |f| File.basename(f.path.to_s) == 'NotifyeWi
 widget_group.set_source_tree('<group>')
 widget_group.set_path('NotifyeWidgets')
 
-unless widget_target.source_build_phase.files_references.include?(swift_ref)
-  widget_target.source_build_phase.add_file_reference(swift_ref)
+[swift_ref, shared_ref].each do |ref|
+  unless widget_target.source_build_phase.files_references.include?(ref)
+    widget_target.source_build_phase.add_file_reference(ref)
+  end
 end
 
 widget_target.build_configurations.each do |cfg|

@@ -35,19 +35,18 @@ export const NameSetupView: React.FC<NameSetupViewProps> = ({
   };
 
   return (
-    <div className="relative min-h-screen bg-[#0B0B0F] text-[#F5F5F7] flex flex-col overflow-hidden">
+    <div className="relative min-h-dvh pt-safe pb-safe px-safe bg-[#0B0B0F] text-[#F5F5F7] flex flex-col overflow-hidden">
       <div aria-hidden="true" className="pointer-events-none fixed inset-0 overflow-hidden">
         <motion.div
           animate={
             prefersReducedMotion
               ? undefined
               : {
-                  scale: [1, 1.12, 1],
-                  opacity: [0.16, 0.28, 0.16],
+                  opacity: [0.5, 0.85, 0.5],
                 }
           }
           transition={{ duration: 12, repeat: Infinity, ease: 'easeInOut' }}
-          className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[30rem] h-[30rem] rounded-full blur-3xl"
+          className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[min(30rem,140vw)] h-[min(30rem,140vw)] rounded-full"
           style={{
             background:
               'radial-gradient(circle, rgba(245,158,11,0.24) 0%, rgba(245,158,11,0.06) 50%, transparent 74%)',
@@ -66,7 +65,7 @@ export const NameSetupView: React.FC<NameSetupViewProps> = ({
           initial={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, y: 16, scale: 0.98 }}
           animate={{ opacity: 1, y: 0, scale: 1 }}
           transition={{ duration: 0.55, ease: [0.16, 1, 0.3, 1] }}
-          className="w-full max-w-md rounded-2xl bg-[#14151B]/90 backdrop-blur-xl border border-white/[0.08] p-6 sm:p-8 space-y-6 shadow-2xl"
+          className="w-full max-w-md rounded-2xl bg-[#14151B]/90 border border-white/[0.08] p-6 sm:p-8 space-y-6 shadow-2xl"
         >
           <div className="space-y-2">
             <div className="inline-flex items-center gap-1.5 text-xs font-medium text-amber-400/90">

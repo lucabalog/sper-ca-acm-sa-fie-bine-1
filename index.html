@@ -2,7 +2,7 @@
 <html lang="en" class="dark">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover" />
     <title>Notifye — Two-Partner Presence</title>
     <meta name="description" content="A quiet, mobile-first space for two partners. Link accounts with a pairing code and send real-time 'Think of me' and priority attention alerts." />
     <meta property="og:title" content="Notifye — Two-Partner Presence" />
@@ -25,6 +25,15 @@
   </head>
   <body class="bg-[#0B0B0F] text-[#F5F5F7] antialiased selection:bg-amber-500/30 selection:text-amber-100">
     <div id="root"></div>
+    <script>
+      // iOS < 15.4 lacks Object.hasOwn, which the Firebase SDK calls. Classic script, so it runs
+      // before the module bundle is evaluated.
+      if (!Object.hasOwn) {
+        Object.hasOwn = function (o, k) {
+          return Object.prototype.hasOwnProperty.call(o, k);
+        };
+      }
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

@@ -51,7 +51,7 @@ export const IncomingNotification: React.FC<IncomingNotificationProps> = ({
   return (
     <div
       aria-live={isUrgent ? 'assertive' : 'polite'}
-      className="fixed top-14 left-0 right-0 z-40 px-3 sm:px-6 pointer-events-none flex justify-center"
+      className="fixed top-notification left-0 right-0 z-40 px-3 sm:px-6 pointer-events-none flex justify-center"
     >
       <AnimatePresence mode="wait">
         {alert && (
@@ -92,7 +92,7 @@ export const IncomingNotification: React.FC<IncomingNotificationProps> = ({
                   }
                 : { type: 'spring', stiffness: 400, damping: 24, mass: 0.85 }
             }
-            className="pointer-events-auto relative w-full max-w-md overflow-hidden rounded-2xl border backdrop-blur-2xl shadow-2xl touch-pan-x"
+            className="pointer-events-auto relative w-full max-w-md overflow-hidden rounded-2xl border shadow-2xl touch-pan-x"
             style={{
               backgroundColor: hexToRgba(backgroundColor, 0.9),
               borderColor: hexToRgba(effectiveAccent, isUrgent ? 0.72 : 0.45),
@@ -226,7 +226,7 @@ export const IncomingNotification: React.FC<IncomingNotificationProps> = ({
                 style={{
                   backgroundColor: effectiveAccent,
                   transform: `scaleX(${progress})`,
-                  transition: 'transform 180ms linear',
+                  transition: 'transform 1000ms linear',
                 }}
               />
             </div>

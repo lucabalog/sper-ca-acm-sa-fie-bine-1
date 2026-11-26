@@ -30,7 +30,7 @@ export class ErrorBoundary extends React.Component<
   render() {
     if (this.state.hasError) {
       return (
-        <div className="min-h-screen bg-[#0B0B0F] text-[#F5F5F7] flex items-center justify-center p-6">
+        <div className="min-h-dvh bg-[#0B0B0F] text-[#F5F5F7] flex items-center justify-center p-6">
           <div className="w-full max-w-md rounded-2xl bg-[#14151B] border border-white/10 p-6 space-y-4">
             <h1 className="font-display text-2xl font-medium text-amber-200">
               Something interrupted Notifye

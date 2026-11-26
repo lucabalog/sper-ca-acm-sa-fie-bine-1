@@ -62,12 +62,12 @@ export const MobileExportSheet: React.FC<MobileExportSheetProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/75 backdrop-blur-sm sm:p-4">
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/75 sm:p-4">
       <div
         role="dialog"
         aria-modal="true"
         aria-labelledby="mobile-export-title"
-        className="w-full sm:max-w-lg max-h-[92vh] overflow-y-auto rounded-t-3xl sm:rounded-2xl bg-[#14151B] border border-white/10 p-5 sm:p-6 space-y-5 shadow-2xl"
+        className="w-full sm:max-w-lg max-h-[92dvh] overflow-y-auto overscroll-contain pb-sheet-safe rounded-t-3xl sm:rounded-2xl bg-[#14151B] border border-white/10 p-5 sm:p-6 space-y-5 shadow-2xl"
       >
         <div className="w-10 h-1 bg-white/15 rounded-full mx-auto sm:hidden" />
 

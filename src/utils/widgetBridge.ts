@@ -1,5 +1,13 @@
+import { Capacitor, registerPlugin } from '@capacitor/core';
 import firebaseConfig from '../../firebase-applet-config.json';
 import type { PairDoc, StudioThemePrefs, UserProfile } from '../types';
+import { getContrastInk, shiftColor } from './themeColors';
+
+/** shiftColor() returns `rgb(r, g, b)`; the Swift widget expects `#RRGGBB`. */
+function shiftHex(hex: string, delta: number): string {
+  const m = shiftColor(hex, delta).match(/\d+/g) ?? ['245', '158', '11'];
+  return '#' + m.slice(0, 3).map((n) => Number(n).toString(16).padStart(2, '0')).join('').toUpperCase();
+}
 
 export interface WidgetSyncPayload {
   apiKey: string;
@@ -17,45 +25,50 @@ export interface WidgetSyncPayload {
   normalMessage: string;
   priorityMessage: string;
   defaultUrgent: boolean;
+  /** Same gradient stops and text colour as the in-app button (ThinkOfMeButton). */
+  buttonTopHex: string;
+  buttonBottomHex: string;
+  buttonInkHex: string;
+  buttonShape: string;
+  /** Partner's ntfy topic for closed-app notifications ('' if they haven't turned it on). */
+  partnerPushTopic: string;
   updatedAtMs: number;
 }
 
-interface CapacitorPluginBridge {
-  syncWidgetState?: (payload: WidgetSyncPayload) => Promise<void>;
-  clearWidgetState?: () => Promise<void>;
+interface NotifyeWidgetBridgePlugin {
+  syncWidgetState(payload: WidgetSyncPayload): Promise<{ appGroupAvailable?: boolean; appGroup?: string }>;
+  clearWidgetState(): Promise<void>;
 }
 
-interface CapacitorGlobal {
-  isNativePlatform?: () => boolean;
-  Plugins?: {
-    NotifyeWidgetBridge?: CapacitorPluginBridge;
-  };
-}
+// Registered natively by NotifyeBridgeViewController (iOS). Capacitor only exposes a native
+// plugin to JS through registerPlugin(); window.Capacitor.Plugins is not pre-populated.
+const NotifyeWidgetBridge = registerPlugin<NotifyeWidgetBridgePlugin>('NotifyeWidgetBridge');
 
-function getWidgetBridge(): CapacitorPluginBridge | null {
-  if (typeof window === 'undefined') return null;
-  const cap = (window as unknown as { Capacitor?: CapacitorGlobal }).Capacitor;
-  return cap?.Plugins?.NotifyeWidgetBridge ?? null;
+function widgetBridgeAvailable(): boolean {
+  return Capacitor.getPlatform() === 'ios' && Capacitor.isPluginAvailable('NotifyeWidgetBridge');
 }
 
 export function isNativeCapacitorApp(): boolean {
-  if (typeof window === 'undefined') return false;
-  const cap = (window as unknown as { Capacitor?: CapacitorGlobal }).Capacitor;
-  return Boolean(cap?.isNativePlatform?.());
+  return Capacitor.isNativePlatform();
 }
+
+/** Last sync result, so the Widgets sheet can tell the user if the widget can't see the app. */
+export let lastWidgetSync: { ok: boolean; appGroupAvailable: boolean } | null = null;
 
 export async function syncNativeWidgetState(params: {
   refreshToken: string;
   profile: UserProfile;
   pair: PairDoc | null;
   themePrefs: StudioThemePrefs;
+  partnerPushTopic: string;
 }): Promise<void> {
-  const { refreshToken, profile, pair, themePrefs } = params;
+  const { refreshToken, profile, pair, themePrefs, partnerPushTopic } = params;
   const isActive = Boolean(pair && pair.status === 'active');
   const partnerName = isActive && pair
     ? (pair.partnerAUid === profile.uid ? pair.partnerBName : pair.partnerAName) || 'Partner'
     : 'Partner';
 
+  const buttonColor = themePrefs.buttonColor || '#F59E0B';
   const payload: WidgetSyncPayload = {
     apiKey: firebaseConfig.apiKey,
     projectId: firebaseConfig.projectId,
@@ -67,13 +80,18 @@ export async function syncNativeWidgetState(params: {
     partnerName,
     memberUids: isActive && pair ? pair.memberUids : [],
     buttonLabel: themePrefs.buttonLabel || 'Think of me',
-    buttonColorHex: themePrefs.buttonColor || '#F59E0B',
+    buttonColorHex: buttonColor,
     backgroundColorHex: themePrefs.backgroundColor || '#0B0B0F',
     normalMessage:
       themePrefs.normalNotifMessage.trim() || 'Your partner wants your attention',
     priorityMessage:
       themePrefs.priorityNotifMessage.trim() || 'Your partner really needs your attention',
     defaultUrgent: themePrefs.widgetDefaultKind === 'urgent_attention',
+    buttonTopHex: shiftHex(buttonColor, 26),
+    buttonBottomHex: shiftHex(buttonColor, -14),
+    buttonInkHex: getContrastInk(buttonColor),
+    buttonShape: themePrefs.buttonShape,
+    partnerPushTopic: isActive ? partnerPushTopic : '',
     updatedAtMs: Date.now(),
   };
 
@@ -91,13 +109,12 @@ export async function syncNativeWidgetState(params: {
     // ignore storage errors
   }
 
-  const bridge = getWidgetBridge();
-  if (bridge?.syncWidgetState) {
-    try {
-      await bridge.syncWidgetState(payload);
-    } catch {
-      // Ignore bridge errors on unsupported environments
-    }
+  if (!widgetBridgeAvailable()) return;
+  try {
+    const res = await NotifyeWidgetBridge.syncWidgetState(payload);
+    lastWidgetSync = { ok: true, appGroupAvailable: res?.appGroupAvailable !== false };
+  } catch {
+    lastWidgetSync = { ok: false, appGroupAvailable: false };
   }
 }
 
@@ -107,12 +124,10 @@ export async function clearNativeWidgetState(): Promise<void> {
   } catch {
     // ignore
   }
-  const bridge = getWidgetBridge();
-  if (bridge?.clearWidgetState) {
-    try {
-      await bridge.clearWidgetState();
-    } catch {
-      // ignore
-    }
+  if (!widgetBridgeAvailable()) return;
+  try {
+    await NotifyeWidgetBridge.clearWidgetState();
+  } catch {
+    // ignore
   }
 }

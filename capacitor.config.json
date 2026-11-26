@@ -4,10 +4,15 @@
   "webDir": "dist",
   "bundledWebRuntime": false,
   "ios": {
-    "contentInset": "automatic",
+    "contentInset": "never",
     "allowsLinkPreview": false,
     "scrollEnabled": true,
     "backgroundColor": "#0B0B0F",
     "preferredContentMode": "mobile"
+  },
+  "android": {
+    "backgroundColor": "#0B0B0F",
+    "adjustMarginsForEdgeToEdge": "disable",
+    "allowMixedContent": false
   }
 }

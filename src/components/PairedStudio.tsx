@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Bell,
   LayoutGrid,
@@ -91,28 +91,7 @@ export const PairedStudio: React.FC<PairedStudioProps> = ({
   const [nowMs, setNowMs] = useState(() => Date.now());
   const [clockDate, setClockDate] = useState(() => new Date());
   const [pressWaveCount, setPressWaveCount] = useState(0);
-  const [bottomBarOpen, setBottomBarOpen] = useState(false);
-
-  const navHoveredRef = useRef(false);
-  const retractTimerRef = useRef<number | null>(null);
-  const lastTouchMsRef = useRef(0);
   const prefersReducedMotion = useReducedMotion();
-
-  const clearBottomRetract = () => {
-    if (retractTimerRef.current !== null) {
-      window.clearTimeout(retractTimerRef.current);
-      retractTimerRef.current = null;
-    }
-  };
-
-  const scheduleBottomRetract = (delayMs: number) => {
-    clearBottomRetract();
-    retractTimerRef.current = window.setTimeout(() => {
-      if (!navHoveredRef.current) {
-        setBottomBarOpen(false);
-      }
-    }, delayMs);
-  };
 
   // Refresh clock once per minute for automatic Ambient Night mode transitions
   useEffect(() => {
@@ -124,83 +103,13 @@ export const PairedStudio: React.FC<PairedStudioProps> = ({
   useEffect(() => {
     if (pings.length === 0 && !incomingAlert) return;
     setNowMs(Date.now());
+    // 1 s tick (was 200 ms, which re-rendered the whole studio 5x/second).
+    // Progress bars animate smoothly between ticks with a 1 s CSS transition.
     const id = window.setInterval(() => {
       setNowMs(Date.now());
-    }, 200);
+    }, 1000);
     return () => window.clearInterval(id);
   }, [pings.length, incomingAlert]);
-
-  // Proximity-driven auto-retracting bottom bar
-  useEffect(() => {
-    const handleProximity = (clientY: number, isTouch: boolean) => {
-      const vh = window.innerHeight || 800;
-      const nearZone = vh - 112;
-      const exitZone = vh - 138;
-
-      if (clientY >= nearZone) {
-        clearBottomRetract();
-        setBottomBarOpen(true);
-        if (isTouch) {
-          scheduleBottomRetract(3600);
-        }
-      } else if (!isTouch && clientY < exitZone && !navHoveredRef.current) {
-        scheduleBottomRetract(220);
-      }
-    };
-
-    const onPointerMove = (e: PointerEvent) => {
-      const isTouch = e.pointerType === 'touch';
-      if (isTouch) lastTouchMsRef.current = Date.now();
-      handleProximity(e.clientY, isTouch);
-    };
-
-    const onMouseMove = (e: MouseEvent) => {
-      if (Date.now() - lastTouchMsRef.current < 600) return;
-      handleProximity(e.clientY, false);
-    };
-
-    const onTouchStart = (e: TouchEvent) => {
-      lastTouchMsRef.current = Date.now();
-      if (e.touches[0]) {
-        const y = e.touches[0].clientY;
-        const vh = window.innerHeight || 800;
-        if (y >= vh - 96) {
-          handleProximity(y, true);
-        } else if (!navHoveredRef.current && y < vh - 138) {
-          clearBottomRetract();
-          setBottomBarOpen(false);
-        }
-      }
-    };
-
-    const onTouchMove = (e: TouchEvent) => {
-      lastTouchMsRef.current = Date.now();
-      if (e.touches[0]) {
-        handleProximity(e.touches[0].clientY, true);
-      }
-    };
-
-    const onDocMouseLeave = () => {
-      if (!navHoveredRef.current) {
-        scheduleBottomRetract(240);
-      }
-    };
-
-    window.addEventListener('pointermove', onPointerMove, { passive: true });
-    window.addEventListener('mousemove', onMouseMove, { passive: true });
-    window.addEventListener('touchstart', onTouchStart, { passive: true });
-    window.addEventListener('touchmove', onTouchMove, { passive: true });
-    document.addEventListener('mouseleave', onDocMouseLeave);
-
-    return () => {
-      clearBottomRetract();
-      window.removeEventListener('pointermove', onPointerMove);
-      window.removeEventListener('mousemove', onMouseMove);
-      window.removeEventListener('touchstart', onTouchStart);
-      window.removeEventListener('touchmove', onTouchMove);
-      document.removeEventListener('mouseleave', onDocMouseLeave);
-    };
-  }, []);
 
   const ambient = resolveAmbientPalette(themePrefs, clockDate);
   const isPartnerA = pair.partnerAUid === profile.uid;
@@ -255,16 +164,15 @@ export const PairedStudio: React.FC<PairedStudioProps> = ({
 
   return (
     <div
-      className="min-h-screen text-[#F5F5F7] flex flex-col transition-colors duration-500"
+      className={`min-h-dvh px-safe text-[#F5F5F7] flex flex-col transition-colors duration-500 ${themePrefs.showHeader ? '' : 'pt-safe'}`}
       style={{ backgroundColor: ambient.effectiveBg }}
     >
       {/* Optional Compact Single-Row Top Bar */}
       {themePrefs.showHeader && (
         <header
-          className="sticky top-0 z-30 backdrop-blur-md border-b border-white/[0.06]"
+          className="sticky top-0 z-30 pt-safe border-b border-white/[0.06]"
           style={{
-            backgroundColor: hexToRgba(ambient.effectiveBg, 0.85),
-            filter: ambient.isNightActive ? `brightness(${ambient.uiBrightness})` : undefined,
+            backgroundColor: hexToRgba(ambient.effectiveBg, 0.96),
           }}
         >
           <div className="w-full max-w-5xl mx-auto px-4 sm:px-6 h-12 flex items-center justify-between gap-4">
@@ -335,11 +243,16 @@ export const PairedStudio: React.FC<PairedStudioProps> = ({
 
       {/* Customizable Main Canvas */}
       <main
-        className={`flex-1 w-full max-w-5xl mx-auto px-4 sm:px-6 py-6 pb-16 flex flex-col transition-[filter] duration-500 ${mainJustifyClass}`}
-        style={{
-          filter: ambient.isNightActive ? `brightness(${ambient.uiBrightness})` : undefined,
-        }}
+        className={`flex-1 w-full max-w-5xl mx-auto px-4 sm:px-6 py-6 pb-main-safe flex flex-col ${mainJustifyClass}`}
       >
+        {/* Night dimming: a static overlay is far cheaper than filter: brightness() on the content */}
+        {ambient.isNightActive && (
+          <div
+            aria-hidden="true"
+            className="pointer-events-none fixed inset-0 z-[25] bg-black transition-opacity duration-500"
+            style={{ opacity: Math.max(0, Math.min(0.6, 1 - ambient.uiBrightness)) }}
+          />
+        )}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 items-center">
           {/* Focal Button Section */}
           <section
@@ -601,7 +514,7 @@ export const PairedStudio: React.FC<PairedStudioProps> = ({
                               style={{
                                 backgroundColor: pingAccent,
                                 transform: `scaleX(${progress})`,
-                                transition: 'transform 180ms linear',
+                                transition: 'transform 1000ms linear',
                               }}
                             />
                           </div>
@@ -616,87 +529,15 @@ export const PairedStudio: React.FC<PairedStudioProps> = ({
         </div>
       </main>
 
-      {/* Stationary Proximity Dock Wrapper (fixes moving-nav hover flicker & touch hit zone) */}
+      {/* Bottom tab bar (always visible) */}
       <div
         className="fixed bottom-0 left-0 right-0 z-30 pointer-events-none flex flex-col justify-end"
       >
-        {/* Retracted Bottom Edge Cue (always hoverable & clickable across full width) */}
-        <button
-          type="button"
-          onPointerEnter={() => {
-            clearBottomRetract();
-            navHoveredRef.current = true;
-            setBottomBarOpen(true);
-          }}
-          onMouseEnter={() => {
-            clearBottomRetract();
-            navHoveredRef.current = true;
-            setBottomBarOpen(true);
-          }}
-          onClick={() => {
-            clearBottomRetract();
-            setBottomBarOpen(true);
-          }}
-          aria-label="Open studio tools bar"
-          className={`absolute inset-x-0 bottom-0 h-12 z-10 flex items-end justify-center pb-2.5 cursor-pointer bg-transparent ${
-            bottomBarOpen ? 'pointer-events-none opacity-0' : 'pointer-events-auto opacity-100'
-          }`}
-        >
-          <span
-            className={`w-12 h-1 rounded-full transition-all duration-300 ${
-              pings.length > 0 ? 'opacity-90' : 'opacity-50 bg-white/40'
-            }`}
-            style={pings.length > 0 ? { backgroundColor: ambient.effectiveButton } : undefined}
-          />
-        </button>
-
-        {/* Auto-Retracting Subtle Bottom Tab Bar */}
-        <motion.nav
+        {/* Always-visible bottom tab bar */}
+        <nav
           aria-label="Studio tools"
-          initial={false}
-          animate={{
-            y: bottomBarOpen ? 0 : '100%',
-            opacity: bottomBarOpen ? 1 : 0,
-          }}
-          transition={
-            prefersReducedMotion
-              ? { duration: 0.1 }
-              : { type: 'spring', stiffness: 420, damping: 32 }
-          }
-          onPointerEnter={() => {
-            clearBottomRetract();
-            navHoveredRef.current = true;
-            setBottomBarOpen(true);
-          }}
-          onMouseEnter={() => {
-            clearBottomRetract();
-            navHoveredRef.current = true;
-            setBottomBarOpen(true);
-          }}
-          onPointerLeave={() => {
-            navHoveredRef.current = false;
-            scheduleBottomRetract(220);
-          }}
-          onMouseLeave={() => {
-            navHoveredRef.current = false;
-            scheduleBottomRetract(220);
-          }}
-          onFocus={() => {
-            clearBottomRetract();
-            navHoveredRef.current = true;
-            setBottomBarOpen(true);
-          }}
-          onBlur={(e) => {
-            if (!e.currentTarget.contains(e.relatedTarget)) {
-              navHoveredRef.current = false;
-              scheduleBottomRetract(120);
-            }
-          }}
-          style={{
-            backgroundColor: hexToRgba(ambient.effectiveBg, 0.88),
-            pointerEvents: bottomBarOpen ? 'auto' : 'none',
-          }}
-          className="relative w-full z-20 backdrop-blur-xl border-t border-white/[0.08]"
+          style={{ backgroundColor: hexToRgba(ambient.effectiveBg, 0.96) }}
+          className="pointer-events-auto relative w-full z-20 pb-safe border-t border-white/[0.08]"
         >
           <div
             className={`w-full max-w-md mx-auto h-[54px] px-2 grid items-center ${
@@ -711,8 +552,6 @@ export const PairedStudio: React.FC<PairedStudioProps> = ({
                 whileTap={prefersReducedMotion ? undefined : { scale: 0.92 }}
                 transition={{ type: 'spring', stiffness: 500, damping: 28 }}
                 onClick={() => {
-                  navHoveredRef.current = false;
-                  setBottomBarOpen(false);
                   onOpenNotifications();
                 }}
                 className="relative min-h-[44px] px-1.5 rounded-xl flex flex-col items-center justify-center gap-0.5 text-zinc-400 hover:text-zinc-100 hover:bg-white/[0.05] transition-colors cursor-pointer"
@@ -742,8 +581,6 @@ export const PairedStudio: React.FC<PairedStudioProps> = ({
                 whileTap={prefersReducedMotion ? undefined : { scale: 0.92 }}
                 transition={{ type: 'spring', stiffness: 500, damping: 28 }}
                 onClick={() => {
-                  navHoveredRef.current = false;
-                  setBottomBarOpen(false);
                   onOpenWidgets();
                 }}
                 className="min-h-[44px] px-1.5 rounded-xl flex flex-col items-center justify-center gap-0.5 text-zinc-400 hover:text-zinc-100 hover:bg-white/[0.05] transition-colors cursor-pointer"
@@ -764,8 +601,6 @@ export const PairedStudio: React.FC<PairedStudioProps> = ({
               whileTap={prefersReducedMotion ? undefined : { scale: 0.92 }}
               transition={{ type: 'spring', stiffness: 500, damping: 28 }}
               onClick={() => {
-                navHoveredRef.current = false;
-                setBottomBarOpen(false);
                 onOpenCustomize();
               }}
               className="min-h-[44px] px-1.5 rounded-xl flex flex-col items-center justify-center gap-0.5 text-zinc-400 hover:text-zinc-100 hover:bg-white/[0.05] transition-colors cursor-pointer"
@@ -779,12 +614,12 @@ export const PairedStudio: React.FC<PairedStudioProps> = ({
               </span>
             </motion.button>
           </div>
-        </motion.nav>
+        </nav>
       </div>
 
       {/* Unpair Confirmation Modal */}
       {confirmUnpair && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4">
           <div className="w-full max-w-sm rounded-2xl bg-[#14151B] border border-white/10 p-6 space-y-4">
             <h3 className="font-display text-xl font-medium text-zinc-100">
               Unlink from {partnerName}?

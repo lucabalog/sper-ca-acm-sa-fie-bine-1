@@ -11,32 +11,30 @@ public class NotifyeWidgetBridge: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "clearWidgetState", returnType: CAPPluginReturnPromise)
     ]
 
-    private let appGroup = "group.com.notifye.app"
-    private let stateKey = "notifye_widget_state"
-
     @objc func syncWidgetState(_ call: CAPPluginCall) {
         guard let jsonData = try? JSONSerialization.data(withJSONObject: call.options ?? [:]) else {
             call.reject("Invalid widget state payload")
             return
         }
-        if let defaults = UserDefaults(suiteName: appGroup) {
-            defaults.set(jsonData, forKey: stateKey)
-            defaults.synchronize()
+        guard let defaults = NotifyeShared.defaults else {
+            // Not entitled to any App Group (e.g. re-signed without one): the widget can't read state.
+            call.resolve(["appGroupAvailable": false])
+            return
         }
-        if #available(iOS 14.0, *) {
-            WidgetCenter.shared.reloadAllTimelines()
-        }
-        call.resolve()
+        defaults.set(jsonData, forKey: NotifyeShared.stateKey)
+        reloadWidgets()
+        call.resolve(["appGroupAvailable": true, "appGroup": NotifyeShared.appGroupId ?? ""])
     }
 
     @objc func clearWidgetState(_ call: CAPPluginCall) {
-        if let defaults = UserDefaults(suiteName: appGroup) {
-            defaults.removeObject(forKey: stateKey)
-            defaults.synchronize()
-        }
+        NotifyeShared.defaults?.removeObject(forKey: NotifyeShared.stateKey)
+        reloadWidgets()
+        call.resolve()
+    }
+
+    private func reloadWidgets() {
         if #available(iOS 14.0, *) {
             WidgetCenter.shared.reloadAllTimelines()
         }
-        call.resolve()
     }
 }

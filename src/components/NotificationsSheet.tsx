@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Bell, BellRing, Check, RotateCcw, Sparkles, X } from 'lucide-react';
 import { AnimatePresence, LayoutGroup, motion, useReducedMotion } from 'motion/react';
 import type { AutoDeleteDuration, PingDoc, StudioThemePrefs } from '../types';
+import { ClosedAppNotificationsCard } from './ClosedAppNotificationsCard';
 import {
   DEFAULT_THEME_PREFS,
   NOTIFICATION_COLOR_SWATCHES,
@@ -21,6 +22,10 @@ interface NotificationsSheetProps {
   onChangeAutoDelete: (seconds: AutoDeleteDuration) => void;
   onToggleFloatingAlerts: () => void;
   onPreviewAlert: (urgent: boolean) => void;
+  closedAppPushEnabled: boolean;
+  onSetClosedAppPush: (enabled: boolean) => void;
+  partnerHasClosedAppPush: boolean;
+  partnerName: string;
 }
 
 type NotifTab = 'alerts' | 'customize';
@@ -48,6 +53,10 @@ export const NotificationsSheet: React.FC<NotificationsSheetProps> = ({
   onChangeAutoDelete,
   onToggleFloatingAlerts,
   onPreviewAlert,
+  closedAppPushEnabled,
+  onSetClosedAppPush,
+  partnerHasClosedAppPush,
+  partnerName,
 }) => {
   const [activeTab, setActiveTab] = useState<NotifTab>('alerts');
   const [selectedTier, setSelectedTier] = useState<AlertTier>('normal');
@@ -57,7 +66,7 @@ export const NotificationsSheet: React.FC<NotificationsSheetProps> = ({
   useEffect(() => {
     if (!open || pings.length === 0) return;
     setNowMs(Date.now());
-    const id = window.setInterval(() => setNowMs(Date.now()), 200);
+    const id = window.setInterval(() => setNowMs(Date.now()), 1000);
     return () => window.clearInterval(id);
   }, [open, pings.length]);
 
@@ -105,7 +114,7 @@ export const NotificationsSheet: React.FC<NotificationsSheetProps> = ({
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.2 }}
-            className="fixed inset-0 bg-black/60 backdrop-blur-sm"
+            className="fixed inset-0 bg-black/60"
           />
 
           <LayoutGroup id="notifications-sheet">
@@ -117,7 +126,7 @@ export const NotificationsSheet: React.FC<NotificationsSheetProps> = ({
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, y: 36, scale: 0.97 }}
               transition={prefersReducedMotion ? { duration: 0.14 } : SHEET_SPRING}
-              className="relative z-10 w-full sm:max-w-lg max-h-[88vh] overflow-y-auto rounded-t-3xl sm:rounded-2xl border border-white/15 backdrop-blur-xl p-5 sm:p-6 space-y-5 shadow-2xl"
+              className="relative z-10 w-full sm:max-w-lg max-h-[88dvh] overflow-y-auto overscroll-contain pb-sheet-safe rounded-t-3xl sm:rounded-2xl border border-white/15 p-5 sm:p-6 space-y-5 shadow-2xl"
               style={{ backgroundColor: hexToRgba(backgroundColor, 0.92) }}
             >
               <div className="w-10 h-1 bg-white/20 rounded-full mx-auto sm:hidden" />
@@ -183,6 +192,14 @@ export const NotificationsSheet: React.FC<NotificationsSheetProps> = ({
                     transition={{ duration: 0.16, ease: [0.16, 1, 0.3, 1] }}
                     className="space-y-4"
                   >
+                    <ClosedAppNotificationsCard
+                      enabled={closedAppPushEnabled}
+                      onSetEnabled={onSetClosedAppPush}
+                      partnerHasIt={partnerHasClosedAppPush}
+                      partnerName={partnerName}
+                      accentColor={accentColor}
+                    />
+
                     {/* Controls Bar */}
                     <div className="flex flex-wrap items-center justify-between gap-3 py-2 border-y border-white/10">
                       <motion.button
@@ -328,7 +345,7 @@ export const NotificationsSheet: React.FC<NotificationsSheetProps> = ({
                                     style={{
                                       backgroundColor: pingAccent,
                                       transform: `scaleX(${progress})`,
-                                      transition: 'transform 180ms linear',
+                                      transition: 'transform 1000ms linear',
                                     }}
                                   />
                                 </div>

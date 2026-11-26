@@ -104,7 +104,7 @@ export const CustomizeSheet: React.FC<CustomizeSheetProps> = ({
   prefs,
   onChange,
 }) => {
-  const [sheetOpacity, setSheetOpacity] = useState(0.72);
+  const [sheetOpacity, setSheetOpacity] = useState(0.9);
   const [previewBurstKey, setPreviewBurstKey] = useState(0);
   const [activeTab, setActiveTab] = useState<StudioTab>('style');
   const prefersReducedMotion = useReducedMotion();
@@ -159,7 +159,7 @@ export const CustomizeSheet: React.FC<CustomizeSheetProps> = ({
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, y: 36, scale: 0.97 }}
               transition={prefersReducedMotion ? { duration: 0.14 } : SHEET_SPRING}
-              className="relative z-10 w-full sm:max-w-md max-h-[90vh] overflow-y-auto rounded-t-3xl sm:rounded-2xl border border-white/15 backdrop-blur-xl p-5 sm:p-6 space-y-5 shadow-2xl transition-colors"
+              className="relative z-10 w-full sm:max-w-md max-h-[90dvh] overflow-y-auto overscroll-contain pb-sheet-safe rounded-t-3xl sm:rounded-2xl border border-white/15 p-5 sm:p-6 space-y-5 shadow-2xl transition-colors"
               style={{
                 backgroundColor: hexToRgba(ambient.effectiveBg, sheetOpacity),
               }}

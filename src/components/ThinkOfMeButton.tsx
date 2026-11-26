@@ -33,6 +33,14 @@ interface BurstEffect {
 }
 
 const HOLD_DURATION_MS = 3000;
+
+// Phones/tablets: no 3D tilt, no hover glow, constant shadow. The 3D layers (perspective,
+// preserve-3d, translateZ) flicker in Android WebView and re-tilting on every touch looked jumpy.
+const FINE_POINTER =
+  typeof window !== 'undefined' &&
+  typeof window.matchMedia === 'function' &&
+  window.matchMedia('(hover: hover) and (pointer: fine)').matches;
+const TOUCH_PRESS_TRANSITION = { type: 'tween' as const, duration: 0.12, ease: 'easeOut' as const };
 const SPARK_ANGLES = Array.from({ length: 12 }, (_, i) => (i * 30 * Math.PI) / 180);
 
 export const ThinkOfMeButton: React.FC<ThinkOfMeButtonProps> = ({
@@ -106,7 +114,7 @@ export const ThinkOfMeButton: React.FC<ThinkOfMeButtonProps> = ({
       const relY = (clientY - rect.top) / rect.height;
       const clampedX = Math.max(0, Math.min(1, relX));
       const clampedY = Math.max(0, Math.min(1, relY));
-      if (!prefersReducedMotion) {
+      if (!prefersReducedMotion && FINE_POINTER) {
         pointerX.set((clampedX - 0.5) * 2);
         pointerY.set((clampedY - 0.5) * 2);
         spotX.set(clampedX * 100);
@@ -150,7 +158,6 @@ export const ThinkOfMeButton: React.FC<ThinkOfMeButtonProps> = ({
   }, [externalBurstKey, triggerTouchAnimation]);
 
   const handlePointerDown = (e: React.PointerEvent<HTMLButtonElement>) => {
-    if (sending) return;
     if (e.pointerType === 'mouse' && e.button !== 0) return;
 
     pointerTypeRef.current = e.pointerType;
@@ -158,7 +165,7 @@ export const ThinkOfMeButton: React.FC<ThinkOfMeButtonProps> = ({
     isPressedRef.current = true;
     urgentTriggeredRef.current = false;
     setIsPressed(true);
-    setIsHovering(true);
+    if (e.pointerType === 'mouse') setIsHovering(true);
     const { ox, oy } = updatePointerTracking(e.clientX, e.clientY);
 
     // Immediate touch feedback: Vibration API + chosen touch animation
@@ -198,7 +205,7 @@ export const ThinkOfMeButton: React.FC<ThinkOfMeButtonProps> = ({
       resetPointerTracking();
     }
 
-    if (!urgentTriggeredRef.current && !sending) {
+    if (!urgentTriggeredRef.current) {
       triggerHaptic('tap');
       setClickMotionCount((c) => c + 1);
       void onPress();
@@ -221,7 +228,6 @@ export const ThinkOfMeButton: React.FC<ThinkOfMeButtonProps> = ({
       pointerDownHandledRef.current = false;
       return;
     }
-    if (sending) return;
     triggerHaptic('tap');
     triggerTouchAnimation();
     setClickMotionCount((c) => c + 1);
@@ -230,18 +236,27 @@ export const ThinkOfMeButton: React.FC<ThinkOfMeButtonProps> = ({
 
   const dimensionClass =
     size === 'sm'
-      ? 'w-36 h-36 sm:w-40 sm:h-40'
+      ? 'w-[min(9rem,42vw)] h-[min(9rem,42vw)] sm:w-40 sm:h-40'
       : size === 'md'
-      ? 'w-44 h-44 sm:w-48 sm:h-48'
-      : 'w-56 h-56 sm:w-64 sm:h-64';
+      ? 'w-[min(11rem,50vw)] h-[min(11rem,50vw)] sm:w-48 sm:h-48'
+      : 'w-[min(14rem,60vw)] h-[min(14rem,60vw)] sm:w-64 sm:h-64';
   const radiusClass = shape === 'squircle' ? 'rounded-[44px]' : 'rounded-full';
   const auraSizeClass =
-    size === 'sm' ? 'w-48 h-48' : size === 'md' ? 'w-60 h-60' : 'w-80 h-80';
+    size === 'sm'
+      ? 'w-[min(12rem,56vw)] h-[min(12rem,56vw)]'
+      : size === 'md'
+      ? 'w-[min(15rem,70vw)] h-[min(15rem,70vw)]'
+      : 'w-[min(20rem,86vw)] h-[min(20rem,86vw)]';
 
   const baseRadiusPx = size === 'sm' ? 76 : size === 'md' ? 94 : 124;
 
   const displayLabel = label.trim() || 'Think of me';
   const labelWords = displayLabel.split(/\s+/);
+
+  // Touch: a plain press-scale. Android WebView randomly dropped half of the button when a
+  // scaled, rounded, overflow-clipped element had animated children (compositor tiling bug),
+  // so on touch the button has no clipping, no inner layers and no keyframed scale.
+  const touchPressAnimate = prefersReducedMotion ? undefined : { scale: isPressed ? 0.94 : 1 };
 
   const getButtonMotionAnimate = () => {
     if (prefersReducedMotion) return undefined;
@@ -291,7 +306,7 @@ export const ThinkOfMeButton: React.FC<ThinkOfMeButtonProps> = ({
   return (
     <div
       className="relative flex items-center justify-center select-none"
-      style={{ perspective: 900 }}
+      style={FINE_POINTER ? { perspective: 900 } : undefined}
     >
       {/* Ambient Radial Aura (breathes stronger on finger hover or press) */}
       <motion.div
@@ -363,13 +378,14 @@ export const ThinkOfMeButton: React.FC<ThinkOfMeButtonProps> = ({
       <motion.button
         ref={buttonRef}
         type="button"
-        disabled={sending}
         onPointerEnter={(e) => {
+          if (e.pointerType !== 'mouse') return;
           setIsHovering(true);
           updatePointerTracking(e.clientX, e.clientY);
         }}
         onPointerMove={(e) => {
-          if (!isHovering) setIsHovering(true);
+          if (e.pointerType !== 'mouse' && !isPressedRef.current) return;
+          if (e.pointerType === 'mouse' && !isHovering) setIsHovering(true);
           updatePointerTracking(e.clientX, e.clientY);
         }}
         onPointerDown={handlePointerDown}
@@ -377,16 +393,18 @@ export const ThinkOfMeButton: React.FC<ThinkOfMeButtonProps> = ({
         onPointerCancel={handlePointerCancelOrLeave}
         onPointerLeave={handlePointerCancelOrLeave}
         onClick={handleKeyboardClick}
-        animate={getButtonMotionAnimate()}
-        transition={getButtonTransition()}
-        className={`relative z-10 overflow-hidden ${dimensionClass} ${radiusClass} flex flex-col items-center justify-center gap-1.5 px-5 text-center focus-visible:outline-2 focus-visible:outline-offset-4 disabled:opacity-75 cursor-pointer touch-none`}
+        animate={FINE_POINTER ? getButtonMotionAnimate() : touchPressAnimate}
+        transition={FINE_POINTER ? getButtonTransition() : TOUCH_PRESS_TRANSITION}
+        className={`relative z-10 ${FINE_POINTER ? 'overflow-hidden' : ''} ${dimensionClass} ${radiusClass} flex flex-col items-center justify-center gap-1.5 px-5 text-center focus-visible:outline-2 focus-visible:outline-offset-4 disabled:opacity-75 cursor-pointer touch-none`}
         style={{
-          rotateX: prefersReducedMotion ? 0 : rotateX,
-          rotateY: prefersReducedMotion ? 0 : rotateY,
-          transformStyle: 'preserve-3d',
+          ...(FINE_POINTER && !prefersReducedMotion
+            ? { rotateX, rotateY, transformStyle: 'preserve-3d' as const }
+            : {}),
           background: `linear-gradient(180deg, ${topTint} 0%, ${color} 60%, ${bottomTint} 100%)`,
           color: inkColor,
-          boxShadow: isPressed
+          boxShadow: !FINE_POINTER
+            ? `0 0 48px ${hexToRgba(color, 0.36)}, inset 0 1px 0 rgba(255,255,255,0.28)`
+            : isPressed
             ? `0 0 44px ${hexToRgba(color, 0.58)}, inset 0 3px 12px rgba(0,0,0,0.28)`
             : isHovering
             ? `0 0 72px ${hexToRgba(color, 0.44)}, inset 0 1px 0 rgba(255,255,255,0.36)`
@@ -395,7 +413,7 @@ export const ThinkOfMeButton: React.FC<ThinkOfMeButtonProps> = ({
       >
         {/* Inner Touch Wave Pulse While Finger Is On Button */}
         <AnimatePresence>
-          {isPressed && !prefersReducedMotion && (
+          {FINE_POINTER && isPressed && !prefersReducedMotion && (
             <motion.span
               key={`inner_${touchPulseKey}`}
               aria-hidden="true"
@@ -410,7 +428,7 @@ export const ThinkOfMeButton: React.FC<ThinkOfMeButtonProps> = ({
         </AnimatePresence>
 
         {/* Dynamic Finger/Pointer Spotlight */}
-        {!prefersReducedMotion && (
+        {FINE_POINTER && !prefersReducedMotion && (
           <motion.span
             aria-hidden="true"
             animate={{ opacity: isHovering || isPressed ? 1 : 0.35 }}
@@ -431,10 +449,9 @@ export const ThinkOfMeButton: React.FC<ThinkOfMeButtonProps> = ({
         {/* Parallax Kinetic Text Layer */}
         <motion.div
           className="relative z-10 flex flex-col items-center justify-center gap-1.5"
-          style={{
-            x: prefersReducedMotion ? 0 : contentShiftX,
-            y: prefersReducedMotion ? 0 : contentShiftY,
-          }}
+          style={
+            FINE_POINTER && !prefersReducedMotion ? { x: contentShiftX, y: contentShiftY } : undefined
+          }
         >
           {/* Staggered Word Wave on Click + Gentle Press Dip */}
           <motion.span
@@ -482,17 +499,17 @@ export const ThinkOfMeButton: React.FC<ThinkOfMeButtonProps> = ({
             ))}
           </motion.span>
 
-          {(subLabel.trim() || sending) && (
-            <AnimatePresence mode="wait">
+          {subLabel.trim() && (
+            <AnimatePresence mode="wait" initial={false}>
               <motion.span
-                key={sending ? 'sending' : `sub_${clickMotionCount}`}
+                key="sub"
                 initial={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, y: 5 }}
                 animate={prefersReducedMotion ? { opacity: 0.85 } : { opacity: 0.85, y: 0 }}
                 exit={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, y: -5 }}
                 transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
                 className="text-xs font-medium"
               >
-                {sending ? 'Sending...' : subLabel}
+                {subLabel}
               </motion.span>
             </AnimatePresence>
           )}
@@ -503,7 +520,7 @@ export const ThinkOfMeButton: React.FC<ThinkOfMeButtonProps> = ({
       <div
         aria-hidden="true"
         className="absolute inset-0 z-20 flex items-center justify-center pointer-events-none"
-        style={{ transform: 'translateZ(28px)' }}
+        style={FINE_POINTER ? { transform: 'translateZ(28px)' } : undefined}
       >
         <AnimatePresence>
           {bursts.map((burst) => (

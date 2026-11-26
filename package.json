@@ -12,7 +12,10 @@
     "lint": "tsc --noEmit"
   },
   "dependencies": {
+    "@capacitor/app": "^7.1.2",
+    "@capacitor/app-launcher": "^7.0.4",
     "@capacitor/core": "^7.4.0",
+    "@capacitor/local-notifications": "^7.0.7",
     "@firebase/eslint-plugin-security-rules": "^0.0.2",
     "@google/genai": "^3.6.1",
     "@tailwindcss/vite": "^4.3.3",
@@ -30,6 +33,7 @@
     "vite-plugin-pwa": "^2.0.0"
   },
   "devDependencies": {
+    "@types/express": "^4.17.21",
     "@types/node": "^22.14.0",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
@@ -37,7 +41,6 @@
     "esbuild": "^0.28.0",
     "tailwindcss": "^4.3.3",
     "tsx": "^4.21.0",
-    "typescript": "^7.0.2",
-    "@types/express": "^4.17.21"
+    "typescript": "^7.0.2"
   }
 }

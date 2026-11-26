@@ -7,8 +7,12 @@ import {
   initializeAuth,
 } from 'firebase/auth';
 import { doc, getDocFromServer, getFirestore } from 'firebase/firestore';
-import { getToken, isSupported, getMessaging, onMessage, type MessagePayload } from 'firebase/messaging';
+import type { MessagePayload } from 'firebase/messaging';
+
+// Web push (FCM) only works in browsers, so the messaging SDK is loaded on demand.
+const loadMessaging = () => import('firebase/messaging');
 import firebaseConfig from '../firebase-applet-config.json';
+import { showNativeNotification } from './utils/nativeNotifications';
 
 const app = initializeApp(firebaseConfig);
 
@@ -111,6 +115,14 @@ export async function registerWebPushNotifications(vapidKey?: string): Promise<{
   }
 
   try {
+    if (Capacitor.isNativePlatform()) {
+      return {
+        permission,
+        fcmToken: '',
+        note: 'Notifications are handled natively in the app.',
+      };
+    }
+    const { getMessaging, getToken, isSupported } = await loadMessaging();
     const messagingSupported = await isSupported();
     if (!messagingSupported || !('serviceWorker' in navigator)) {
       return {
@@ -162,6 +174,8 @@ export async function subscribeForegroundFcm(
   onPayload: (payload: MessagePayload) => void
 ): Promise<() => void> {
   try {
+    if (Capacitor.isNativePlatform()) return () => {};
+    const { getMessaging, isSupported, onMessage } = await loadMessaging();
     const supported = await isSupported();
     if (!supported) return () => {};
     const messaging = getMessaging(app);
@@ -172,6 +186,13 @@ export async function subscribeForegroundFcm(
 }
 
 export async function showPartnerSystemNotification(title: string, body: string): Promise<void> {
+  if (Capacitor.isNativePlatform()) {
+    // In the foreground the in-app banner already shows; use a system notification when the
+    // app is in the background (it keeps listening for a short while before the OS suspends it).
+    if (typeof document !== 'undefined' && document.visibilityState === 'visible') return;
+    await showNativeNotification(title, body);
+    return;
+  }
   if (typeof window === 'undefined' || !('Notification' in window)) return;
   if (Notification.permission !== 'granted') return;
 

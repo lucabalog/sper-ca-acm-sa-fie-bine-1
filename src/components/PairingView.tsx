@@ -11,7 +11,8 @@ interface PairingViewProps {
   onJoinWithCode: (code: string) => Promise<void>;
   onUpdateName: (name: string) => Promise<void>;
   onBypassPairing: () => void;
-  onOpenIpaExport: () => void;
+  /** Developer export tool; omitted inside the installed app. */
+  onOpenIpaExport?: () => void;
   busy: boolean;
   error: string | null;
 }
@@ -68,11 +69,12 @@ export const PairingView: React.FC<PairingViewProps> = ({
   };
 
   return (
-    <div className="min-h-screen bg-[#0B0B0F] text-[#F5F5F7] flex flex-col">
+    <div className="min-h-dvh pt-safe pb-safe px-safe bg-[#0B0B0F] text-[#F5F5F7] flex flex-col">
       <header className="w-full max-w-5xl mx-auto px-5 h-14 flex items-center justify-between gap-4 border-b border-white/[0.06]">
         <span className="font-display text-lg font-medium tracking-tight text-zinc-100 whitespace-nowrap shrink-0">
           Notifye
         </span>
+        {onOpenIpaExport && (
         <div className="flex items-center gap-2 shrink-0">
           <button
             type="button"
@@ -84,6 +86,7 @@ export const PairingView: React.FC<PairingViewProps> = ({
             <span>iOS .ipa</span>
           </button>
         </div>
+        )}
       </header>
 
       <main className="flex-1 w-full max-w-5xl mx-auto px-5 py-8 sm:py-12 flex items-center">
@@ -126,7 +129,7 @@ export const PairingView: React.FC<PairingViewProps> = ({
             ) : (
               <div className="flex items-center gap-2 text-xs text-zinc-400">
                 <span>
-                  Signed in as{' '}
+                  You&apos;re{' '}
                   <span className="text-zinc-200 font-medium">{profile.displayName}</span>
                 </span>
                 <button
@@ -220,7 +223,7 @@ export const PairingView: React.FC<PairingViewProps> = ({
                   02. Enter partner&apos;s code
                 </h2>
                 <p className="text-sm text-zinc-400 leading-relaxed">
-                  Already have a 6-character code from your partner? Enter it here to connect your accounts.
+                  Already have a 6-character code from your partner? Enter it here to connect.
                 </p>
               </div>
 
@@ -257,7 +260,7 @@ export const PairingView: React.FC<PairingViewProps> = ({
 
           <div className="rounded-2xl bg-[#14151B]/70 border border-white/[0.06] px-5 py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div className="space-y-0.5">
-              <p className="text-sm font-medium text-zinc-200">Testing without a second account?</p>
+              <p className="text-sm font-medium text-zinc-200">Testing on one phone?</p>
               <p className="text-xs text-zinc-400">
                 Bypass the pairing code wall to preview the studio, alerts, and customization solo.
               </p>

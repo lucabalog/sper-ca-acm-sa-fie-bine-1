@@ -10,6 +10,8 @@ import {
   Sparkles,
   X,
 } from 'lucide-react';
+import { Capacitor } from '@capacitor/core';
+import { isNativeCapacitorApp, lastWidgetSync } from '../utils/widgetBridge';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import type { PingDoc, StudioThemePrefs, WidgetDefaultKind } from '../types';
 import { hexToRgba, resolveAmbientPalette } from '../utils/themeColors';
@@ -24,11 +26,14 @@ interface WidgetsSheetProps {
   onSendNormal: () => Promise<void>;
   onSendUrgent: () => Promise<void>;
   onOpenStandaloneWidget: () => void;
-  onOpenIpaExport: () => void;
+  onOpenIpaExport?: () => void;
   sendingPing: boolean;
 }
 
 const SHEET_SPRING = { type: 'spring' as const, stiffness: 380, damping: 32, mass: 0.85 };
+
+const isNativeApp = isNativeCapacitorApp();
+const isIOS = Capacitor.getPlatform() === 'ios';
 
 export const WidgetsSheet: React.FC<WidgetsSheetProps> = ({
   open,
@@ -45,6 +50,7 @@ export const WidgetsSheet: React.FC<WidgetsSheetProps> = ({
 }) => {
   const [widgetFeedback, setWidgetFeedback] = useState<'normal' | 'urgent' | null>(null);
   const [copiedKey, setCopiedKey] = useState<'send' | 'priority' | null>(null);
+  const widgetSync = open ? lastWidgetSync : null;
   const prefersReducedMotion = useReducedMotion();
 
   const ambient = resolveAmbientPalette(prefs);
@@ -96,7 +102,7 @@ export const WidgetsSheet: React.FC<WidgetsSheetProps> = ({
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.2 }}
-            className="fixed inset-0 bg-black/65 backdrop-blur-sm"
+            className="fixed inset-0 bg-black/65"
           />
 
           <motion.div
@@ -107,7 +113,7 @@ export const WidgetsSheet: React.FC<WidgetsSheetProps> = ({
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, y: 36, scale: 0.97 }}
             transition={prefersReducedMotion ? { duration: 0.14 } : SHEET_SPRING}
-            className="relative z-10 w-full sm:max-w-md max-h-[90vh] overflow-y-auto rounded-t-3xl sm:rounded-2xl border border-white/15 backdrop-blur-xl p-5 sm:p-6 space-y-5 shadow-2xl"
+            className="relative z-10 w-full sm:max-w-md max-h-[90dvh] overflow-y-auto overscroll-contain pb-sheet-safe rounded-t-3xl sm:rounded-2xl border border-white/15 p-5 sm:p-6 space-y-5 shadow-2xl"
             style={{ backgroundColor: hexToRgba(ambient.effectiveBg, 0.94) }}
           >
             <div className="w-10 h-1 bg-white/20 rounded-full mx-auto sm:hidden" />
@@ -346,6 +352,26 @@ export const WidgetsSheet: React.FC<WidgetsSheetProps> = ({
                 <span>Open Standalone Mini Widget</span>
               </button>
 
+              {isNativeApp ? (
+                <div className="rounded-xl bg-white/[0.05] border border-white/10 p-3.5 space-y-2 text-xs text-zinc-300 leading-relaxed">
+                  <p className="text-sm font-semibold text-zinc-100">Add the Home Screen widget</p>
+                  {isIOS ? (
+                    <ol className="list-decimal pl-4 space-y-1">
+                      <li>Touch and hold an empty spot on your Home Screen (or Lock Screen).</li>
+                      <li>Tap <span className="text-zinc-100 font-medium">+</span> / <span className="text-zinc-100 font-medium">Edit</span>, search for <span className="text-zinc-100 font-medium">Notifye</span>.</li>
+                      <li>Pick a size and tap <span className="text-zinc-100 font-medium">Add Widget</span>. Tapping it notifies your partner instantly.</li>
+                    </ol>
+                  ) : (
+                    <p>Home Screen widgets are available on iPhone (iOS 17+). On Android, use the in-app button.</p>
+                  )}
+                  {isIOS && widgetSync && !widgetSync.appGroupAvailable && (
+                    <p className="text-rose-300">
+                      This install can&apos;t share data with the widget (its App Group was removed when the app was signed). Re-sign with App Groups enabled.
+                    </p>
+                  )}
+                </div>
+              ) : (
+              <>
               <div className="grid grid-cols-2 gap-2">
                 <button
                   type="button"
@@ -381,7 +407,7 @@ export const WidgetsSheet: React.FC<WidgetsSheetProps> = ({
                   type="button"
                   onClick={() => {
                     onClose();
-                    onOpenIpaExport();
+                    onOpenIpaExport?.();
                   }}
                   className="min-h-[38px] px-3 rounded-xl bg-white/10 hover:bg-white/15 text-xs font-medium text-zinc-100 flex items-center gap-1.5 shrink-0 whitespace-nowrap cursor-pointer"
                 >
@@ -389,6 +415,8 @@ export const WidgetsSheet: React.FC<WidgetsSheetProps> = ({
                   <span>Get .ipa</span>
                 </button>
               </div>
+              </>
+              )}
             </div>
           </motion.div>
         </div>
